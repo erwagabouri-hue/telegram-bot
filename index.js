@@ -56,6 +56,38 @@ Tape /scan pour analyser les matchs
 Tape /premium pour accès illimité 🔥
   `);
 });
+// PREMIUM
+bot.command("premium", async (ctx) => {
+  try {
+    const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "subscription",
+      line_items: [
+        {
+          price: "price_1T71Kf2MDPLIlfMHtBMswnJ8", // ⚠️ ton ID price Stripe
+          quantity: 1,
+        },
+      ],
+      success_url: "https://t.me/PerfctIAbot",
+      cancel_url: "https://t.me/PerfctIAbot",
+    });
+
+   ctx.reply(`
+💎 PREMIUM IA VALUE BOT
+
+Accès illimité aux alertes IA.
+Fonctionnalités avancées activées.
+
+👉 Clique ici pour t'abonner :
+${session.url}
+    `);
+  } catch (error) {
+    console.error("Erreur premium:", error.message);
+    ctx.reply("Erreur lors de la création du paiement.");
+  }
+});
 
 
 // ================= PREMIUM =================
