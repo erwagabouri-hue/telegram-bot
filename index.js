@@ -125,23 +125,4 @@ function simulateMatch() {
     homeForm: Math.random() * 100,
     awayWeakness: Math.random() * 100,
     xGDiff: Math.random() * 2,
-    odds: (Math.random() * 2 + 1.5).toFixed(2),
-    momentum: Math.random() * 100
-  };
-
-  const probability = analyzeMatch(match);
-  const value = calculateValue(probability, match.odds);
-
-  sendAlert(match, probability, value);
-}
-
-// Analyse toutes les 60 secondes
-setInterval(simulateMatch, 60000);
-
-// =======================
-// SERVEUR RAILWAY
-// =======================
-http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end("Bot running");
-}).listen(process.env.PORT || 3000);
+    odds: (Math.random() * 2 + 1.5).toF
