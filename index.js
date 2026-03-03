@@ -35,22 +35,39 @@ const MAJOR_LEAGUES = [
   "soccer_france_ligue_one"
 ];
 
-// START
+
+// ================= START + BOUTONS =================
+
 bot.start((ctx) => {
-  ctx.reply(`
-🤖 IA VALUE BOT PRO
+  ctx.reply(
+    `🤖 IA VALUE BOT PRO
 
 ♦ 2 alertes gratuites / jour
 ♦ Ligues majeures uniquement
-♦ Probabilité IA >60%
+♦ Probabilité IA intelligente
 ♦ Edge minimum 15%
 
-Tape /scan pour analyser les matchs
-Tape /premium pour débloquer l'accès illimité 💎
-  `);
+Choisis une option 👇`,
+    {
+      reply_markup: {
+        keyboard: [
+          ["🔎 Scan"],
+          ["💎 Premium"]
+        ],
+        resize_keyboard: true,
+        persistent: true
+      }
+    }
+  );
 });
 
-// PREMIUM
+// Boutons
+bot.hears("🔎 Scan", (ctx) => ctx.telegram.sendMessage(ctx.chat.id, "/scan"));
+bot.hears("💎 Premium", (ctx) => ctx.telegram.sendMessage(ctx.chat.id, "/premium"));
+
+
+// ================= PREMIUM =================
+
 bot.command("premium", async (ctx) => {
   try {
     const session = await stripe.checkout.sessions.create({
@@ -58,7 +75,7 @@ bot.command("premium", async (ctx) => {
       mode: "subscription",
       line_items: [
         {
-          price: "price_1T71Kf2MDPLIlfMHtBMswnJ8", // TON ID PRICE STRIPE
+          price: "price_1T71Kf2MDPLIlfMHtBMswnJ8",
           quantity: 1,
         },
       ],
@@ -81,7 +98,9 @@ ${session.url}
   }
 });
 
-// SCAN
+
+// ================= SCAN =================
+
 bot.command("scan", async (ctx) => {
   try {
     const userId = ctx.from.id;
@@ -89,7 +108,7 @@ bot.command("scan", async (ctx) => {
     if (!userAlerts[userId]) userAlerts[userId] = 0;
 
     if (userAlerts[userId] >= MAX_FREE_ALERTS) {
-      return ctx.reply("⚠️ Limite gratuite atteinte (2 alertes/jour). Tape /premium pour débloquer 💎");
+      return ctx.reply("⚠️ Limite gratuite atteinte (2 alertes/jour). Passe Premium 💎");
     }
 
     for (const league of MAJOR_LEAGUES) {
@@ -105,7 +124,6 @@ bot.command("scan", async (ctx) => {
       }
 
       const matches = response.data;
-
       if (!matches || !matches.length) continue;
 
       for (const match of matches) {
@@ -123,31 +141,18 @@ bot.command("scan", async (ctx) => {
 
           if (!odds || odds < 1.5) continue;
 
+          // Probabilité implicite bookmaker
           const impliedProbability = 1 / odds;
 
-// Probabilité implicite bookmaker
-const impliedProbability = 1 / odds;
+          // Ajustement intelligent
+          let aiProbability = impliedProbability;
 
-// Ajustement intelligent
-let aiProbability = impliedProbability;
+          if (odds >= 3) aiProbability *= 1.25;
+          if (odds >= 2 && odds < 3) aiProbability *= 1.15;
 
-// Si cote élevée = possible value cachée
-if (odds >= 3) {
-  aiProbability *= 1.25;
-}
+          if (aiProbability > 0.80) aiProbability = 0.80;
 
-// Si outsider modéré
-if (odds >= 2 && odds < 3) {
-  aiProbability *= 1.15;
-}
-
-// Normalisation max 0.80
-if (aiProbability > 0.80) {
-  aiProbability = 0.80;
-}
-
-// Calcul edge réel
-const edge = (aiProbability * odds) - 1;
+          const edge = (aiProbability * odds) - 1;
 
           if (aiProbability > 0.60 && edge > 0.15) {
             userAlerts[userId]++;
@@ -175,10 +180,11 @@ const edge = (aiProbability * odds) - 1;
   }
 });
 
-// Lancement
+
+// ================= LANCEMENT =================
+
 bot.launch();
 console.log("Bot lancé");
 
-// Stop propre Railway
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
