@@ -236,6 +236,8 @@ app.listen(3000, () => console.log("Server running"));
 
 bot.launch();
 console.log("Bot lancé");
-
+bot.command("premium", (ctx) => {
+  ctx.reply("Premium command active");
+});
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
