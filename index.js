@@ -1,128 +1,109 @@
 const TelegramBot = require('node-telegram-bot-api');
-const http = require('http');
+const axios = require('axios');
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
+const oddsApiKey = process.env.ODDS_API_KEY;
 
 if (!token) {
-  console.error("TELEGRAM_BOT_TOKEN manquant !");
+  console.error("❌ TELEGRAM_BOT_TOKEN manquant");
+  process.exit(1);
+}
+
+if (!oddsApiKey) {
+  console.error("❌ ODDS_API_KEY manquant");
   process.exit(1);
 }
 
 const bot = new TelegramBot(token, { polling: true });
 
-console.log("🤖 Bot IA démarré...");
+console.log("🤖 IA VALUE BOT démarré...");
 
-// =======================
-// STOCKAGE UTILISATEURS
-// =======================
-const users = new Map();
+let freeAlertsToday = 0;
+let lastReset = new Date().getDate();
 
-// =======================
-// COMMANDE START
-// =======================
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-
-  if (!users.has(chatId)) {
-    users.set(chatId, {
-      dailyAlertCount: 0,
-      lastAlertDate: new Date().toDateString(),
-      isPremium: false
-    });
+function resetDailyCounter() {
+  const today = new Date().getDate();
+  if (today !== lastReset) {
+    freeAlertsToday = 0;
+    lastReset = today;
   }
-
-  bot.sendMessage(chatId, `
-🤖 IA VALUE BOT
-
-🔹 2 alertes gratuites / jour
-🔹 Premium = alertes live illimitées
-🔹 Détection automatique >80%
-🔹 Détection value cote
-
-Bot actif 🚀
-  `);
-});
-
-// =======================
-// ACTIVER PREMIUM (test)
-// =======================
-bot.onText(/\/premium/, (msg) => {
-  const chatId = msg.chat.id;
-
-  if (users.has(chatId)) {
-    users.get(chatId).isPremium = true;
-    bot.sendMessage(chatId, "💎 Premium activé (mode test)");
-  }
-});
-
-// =======================
-// ANALYSE IA
-// =======================
-function analyzeMatch(match) {
-  let score = 0;
-
-  if (match.homeForm > 70) score += 25;
-  if (match.awayWeakness > 60) score += 20;
-  if (match.xGDiff > 1.2) score += 20;
-  if (match.odds > 1.8 && match.odds < 3.5) score += 15;
-  if (match.momentum > 70) score += 20;
-
-  return score; // max 100
 }
 
-// =======================
-// CALCUL VALUE
-// =======================
-function calculateValue(probability, odds) {
-  return (probability / 100 * odds) - 1;
-}
+async function checkMatches(chatId) {
+  try {
+    resetDailyCounter();
 
-// =======================
-// ENVOI ALERTES
-// =======================
-function sendAlert(match, probability, value) {
+    const response = await axios.get(
+      `https://api.the-odds-api.com/v4/sports/soccer/odds`,
+      {
+        params: {
+          apiKey: oddsApiKey,
+          regions: 'eu',
+          markets: 'h2h',
+          oddsFormat: 'decimal'
+        }
+      }
+    );
 
-  users.forEach((user, chatId) => {
+    const matches = response.data;
 
-    const today = new Date().toDateString();
+    for (let match of matches) {
+      const bookmaker = match.bookmakers?.[0];
+      if (!bookmaker) continue;
 
-    // reset compteur chaque jour
-    if (user.lastAlertDate !== today) {
-      user.dailyAlertCount = 0;
-      user.lastAlertDate = today;
-    }
+      const market = bookmaker.markets?.[0];
+      if (!market) continue;
 
-    if (probability >= 80 && value >= 0.15) {
+      const outcomes = market.outcomes;
 
-      if (user.dailyAlertCount < 2 || user.isPremium) {
+      for (let outcome of outcomes) {
+        const odd = outcome.price;
 
-        bot.sendMessage(chatId, `
-🚨 VALUE DÉTECTÉE
+        // Simulation probabilité IA
+        const probability = Math.random() * 100;
 
-⚽ ${match.name}
-📊 Probabilité IA : ${probability}%
-💰 Cote : ${match.odds}
-🔥 Value : ${(value * 100).toFixed(1)}%
+        if (probability > 80 && odd >= 1.7) {
 
-Entrée recommandée maintenant ⚡
-        `);
+          if (freeAlertsToday >= 2) {
+            bot.sendMessage(chatId, "⚠️ Limite gratuite atteinte (2/jour)");
+            return;
+          }
 
-        if (!user.isPremium) {
-          user.dailyAlertCount++;
+          freeAlertsToday++;
+
+          bot.sendMessage(chatId,
+            `🔥 ALERTE VALUE\n\n` +
+            `🏆 ${match.home_team} vs ${match.away_team}\n` +
+            `🎯 Pick: ${outcome.name}\n` +
+            `📊 Probabilité IA: ${probability.toFixed(1)}%\n` +
+            `💰 Cote: ${odd}`
+          );
+
+          return;
         }
       }
     }
-  });
+
+    bot.sendMessage(chatId, "❌ Aucune value >80% pour le moment.");
+
+  } catch (error) {
+    console.error("Erreur API:", error.message);
+    bot.sendMessage(chatId, "❌ Erreur récupération des matchs.");
+  }
 }
 
-// =======================
-// SIMULATION MATCH LIVE
-// =======================
-function simulateMatch() {
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
 
-  const match = {
-    name: "PSG vs OM",
-    homeForm: Math.random() * 100,
-    awayWeakness: Math.random() * 100,
-    xGDiff: Math.random() * 2,
-    odds: (Math.random() * 2 + 1.5).toF
+  bot.sendMessage(chatId,
+    `🤖 IA VALUE BOT\n\n` +
+    `♦ 2 alertes gratuites / jour\n` +
+    `♦ Détection automatique >80%\n` +
+    `♦ Value avec bonne cote\n\n` +
+    `Tape /scan pour analyser les matchs`
+  );
+});
+
+bot.onText(/\/scan/, (msg) => {
+  checkMatches(msg.chat.id);
+});
