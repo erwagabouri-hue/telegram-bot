@@ -1,8 +1,10 @@
 const { Telegraf } = require("telegraf");
 const axios = require("axios");
 const Stripe = require("stripe");
-const express = require("express");
 
+console.log("VERSION FINALE PREMIUM ACTIVE");
+
+// Vérification variables Railway
 if (!process.env.BOT_TOKEN) {
   console.error("BOT_TOKEN manquant");
   process.exit(1);
@@ -18,18 +20,11 @@ if (!process.env.STRIPE_SECRET_KEY) {
   process.exit(1);
 }
 
-if (!process.env.STRIPE_PRICE_ID) {
-  console.error("STRIPE_PRICE_ID manquant");
-  process.exit(1);
-}
-
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-const app = express();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const MAX_FREE_ALERTS = 2;
 const userAlerts = {};
-const premiumUsers = {}; // stockage simple (temporaire)
 
 // Ligues majeures uniquement
 const MAJOR_LEAGUES = [
@@ -40,9 +35,7 @@ const MAJOR_LEAGUES = [
   "soccer_france_ligue_one"
 ];
 
-
-// ================= START =================
-
+// START
 bot.start((ctx) => {
   ctx.reply(`
 🤖 IA VALUE BOT PRO
@@ -53,20 +46,19 @@ bot.start((ctx) => {
 ♦ Edge minimum 15%
 
 Tape /scan pour analyser les matchs
-Tape /premium pour accès illimité 🔥
+Tape /premium pour débloquer l'accès illimité 💎
   `);
 });
+
 // PREMIUM
 bot.command("premium", async (ctx) => {
   try {
-    const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "subscription",
       line_items: [
         {
-          price: "price_1T71Kf2MDPLIlfMHtBMswnJ8", // ⚠️ ton ID price Stripe
+          price: "price_1T71Kf2MDPLIlfMHtBMswnJ8", // TON ID PRICE STRIPE
           quantity: 1,
         },
       ],
@@ -74,7 +66,7 @@ bot.command("premium", async (ctx) => {
       cancel_url: "https://t.me/PerfctIAbot",
     });
 
-   ctx.reply(`
+    ctx.reply(`
 💎 PREMIUM IA VALUE BOT
 
 Accès illimité aux alertes IA.
@@ -89,49 +81,15 @@ ${session.url}
   }
 });
 
-
-// ================= PREMIUM =================
-
-bot.command("premium", async (ctx) => {
-  const userId = ctx.from.id;
-
-  try {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "subscription",
-      line_items: [
-        {
-          price: process.env.STRIPE_PRICE_ID,
-          quantity: 1,
-        },
-      ],
-      success_url: "https://t.me/PerfctIAbot",
-      cancel_url: "https://t.me/PerfctIAbot",
-      metadata: {
-        telegramId: userId.toString(),
-      },
-    });
-
-    ctx.reply(`🔥 Passe Premium ici :\n\n${session.url}`);
-  } catch (err) {
-    console.log(err);
-    ctx.reply("Erreur Stripe.");
-  }
-});
-
-
-// ================= SCAN =================
-
+// SCAN
 bot.command("scan", async (ctx) => {
   try {
     const userId = ctx.from.id;
 
-    if (!premiumUsers[userId]) {
-      if (!userAlerts[userId]) userAlerts[userId] = 0;
+    if (!userAlerts[userId]) userAlerts[userId] = 0;
 
-      if (userAlerts[userId] >= MAX_FREE_ALERTS) {
-        return ctx.reply("⚠️ Limite gratuite atteinte (2 alertes/jour). Passe Premium avec /premium");
-      }
+    if (userAlerts[userId] >= MAX_FREE_ALERTS) {
+      return ctx.reply("⚠️ Limite gratuite atteinte (2 alertes/jour). Tape /premium pour débloquer 💎");
     }
 
     for (const league of MAJOR_LEAGUES) {
@@ -166,14 +124,12 @@ bot.command("scan", async (ctx) => {
           if (!odds || odds < 1.5) continue;
 
           const impliedProbability = 1 / odds;
+
           const aiProbability = (Math.random() * 0.30) + 0.45;
           const edge = (aiProbability * odds) - 1;
 
           if (aiProbability > 0.60 && edge > 0.15) {
-
-            if (!premiumUsers[userId]) {
-              userAlerts[userId]++;
-            }
+            userAlerts[userId]++;
 
             return ctx.reply(`
 🔥 ALERTE VALUE
@@ -198,46 +154,10 @@ bot.command("scan", async (ctx) => {
   }
 });
 
-
-// ================= WEBHOOK STRIPE =================
-
-app.post("/webhook", express.raw({ type: "application/json" }), (req, res) => {
-  const sig = req.headers["stripe-signature"];
-
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (err) {
-    console.log("Webhook signature failed.");
-    return res.sendStatus(400);
-  }
-
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const telegramId = session.metadata.telegramId;
-
-    premiumUsers[telegramId] = true;
-
-    console.log("Premium activé pour :", telegramId);
-  }
-
-  res.sendStatus(200);
-});
-
-app.listen(3000, () => console.log("Server running"));
-
-
-// ================= LANCEMENT =================
-
+// Lancement
 bot.launch();
 console.log("Bot lancé");
-bot.command("premium", (ctx) => {
-  ctx.reply("Premium command active");
-});
+
+// Stop propre Railway
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
