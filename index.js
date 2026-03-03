@@ -125,8 +125,29 @@ bot.command("scan", async (ctx) => {
 
           const impliedProbability = 1 / odds;
 
-          const aiProbability = (Math.random() * 0.30) + 0.45;
-          const edge = (aiProbability * odds) - 1;
+// Probabilité implicite bookmaker
+const impliedProbability = 1 / odds;
+
+// Ajustement intelligent
+let aiProbability = impliedProbability;
+
+// Si cote élevée = possible value cachée
+if (odds >= 3) {
+  aiProbability *= 1.25;
+}
+
+// Si outsider modéré
+if (odds >= 2 && odds < 3) {
+  aiProbability *= 1.15;
+}
+
+// Normalisation max 0.80
+if (aiProbability > 0.80) {
+  aiProbability = 0.80;
+}
+
+// Calcul edge réel
+const edge = (aiProbability * odds) - 1;
 
           if (aiProbability > 0.60 && edge > 0.15) {
             userAlerts[userId]++;
