@@ -1,26 +1,25 @@
 const { Telegraf } = require("telegraf");
 const axios = require("axios");
 
-// Vérification variables
+// Vérification variables Railway
 if (!process.env.BOT_TOKEN) {
-  console.error("❌ BOT_TOKEN manquant");
+  console.error("BOT_TOKEN manquant");
   process.exit(1);
 }
 
 if (!process.env.ODDS_API_KEY) {
-  console.error("❌ ODDS_API_KEY manquant");
+  console.error("ODDS_API_KEY manquant");
   process.exit(1);
 }
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// Limite gratuite
-const userAlerts = {};
 const MAX_FREE_ALERTS = 2;
+const userAlerts = {};
 
 // Ligues majeures uniquement
 const MAJOR_LEAGUES = [
-  "soccer_epl",          // Premier League
+  "soccer_epl",
   "soccer_spain_la_liga",
   "soccer_germany_bundesliga",
   "soccer_italy_serie_a",
@@ -53,16 +52,22 @@ bot.command("scan", async (ctx) => {
     }
 
     for (const league of MAJOR_LEAGUES) {
-
       const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`;
 
-      const response = await axios.get(url);
+      let response;
+
+      try {
+        response = await axios.get(url);
+      } catch (apiError) {
+        console.log("Erreur API:", apiError.message);
+        continue;
+      }
+
       const matches = response.data;
 
-      if (!matches.length) continue;
+      if (!matches || !matches.length) continue;
 
       for (const match of matches) {
-
         const home = match.home_team;
         const away = match.away_team;
 
@@ -72,28 +77,23 @@ bot.command("scan", async (ctx) => {
         const outcomes = market.outcomes;
 
         for (const outcome of outcomes) {
-
           const team = outcome.name;
           const odds = outcome.price;
 
           if (!odds || odds < 1.5) continue;
 
-          // Probabilité implicite bookmaker
           const impliedProbability = 1 / odds;
 
           // Estimation IA réaliste (45% à 75%)
           const aiProbability = (Math.random() * 0.30) + 0.45;
 
-          // Calcul Edge
           const edge = (aiProbability * odds) - 1;
 
-          // Conditions VALUE sérieuse
           if (aiProbability > 0.60 && edge > 0.15) {
-
             userAlerts[userId]++;
 
             return ctx.reply(`
-🔥 ALERTE VALUE (Ligue majeure)
+🔥 ALERTE VALUE
 
 🏆 ${home} vs ${away}
 🎯 Pick: ${team}
@@ -108,17 +108,16 @@ bot.command("scan", async (ctx) => {
       }
     }
 
-    ctx.reply("Aucune value intéressante trouvée dans les ligues majeures.");
-    
+    ctx.reply("Aucune value intéressante trouvée.");
   } catch (error) {
-    console.error(error);
+    console.error("Erreur générale:", error.message);
     ctx.reply("Erreur lors du scan.");
   }
 });
 
 // Lancement
 bot.launch();
-console.log("🚀 Bot lancé en mode VALUE PRO");
+console.log("Bot lancé");
 
 // Stop propre Railway
 process.once("SIGINT", () => bot.stop("SIGINT"));
