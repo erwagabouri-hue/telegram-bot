@@ -9,22 +9,7 @@ const MAX_FREE_SCANS = 2
 
 const userStats = {}
 const premiumUsers = new Set()
-
-// LIGUES STABLES
-
-const LEAGUES = [
-
-"soccer_epl",
-"soccer_spain_la_liga",
-"soccer_germany_bundesliga",
-"soccer_italy_serie_a",
-"soccer_france_ligue_one",
-
-"soccer_netherlands_eredivisie",
-"soccer_portugal_primeira_liga",
-"soccer_turkey_super_league"
-
-]
+const users = new Set()
 
 // MENU
 
@@ -40,6 +25,8 @@ const menu = Markup.keyboard([
 bot.start((ctx)=>{
 
 const user = ctx.from.id
+users.add(user)
+
 const param = ctx.startPayload
 
 if(param === "premium"){
@@ -50,7 +37,7 @@ ctx.reply(`👑 Bienvenue dans la Team Gagnante !
 
 Ton accès Premium est maintenant activé.
 
-Tu as maintenant accès :
+Tu as accès :
 
 • scans illimités
 • alertes exclusives
@@ -87,27 +74,19 @@ if(!userStats[user]) userStats[user] = 0
 
 if(!isPremium && userStats[user] >= MAX_FREE_SCANS){
 
-return ctx.reply(`⚠️ Limite gratuite atteinte.
-
-Passe Premium pour accéder aux scans illimités.`)
+return ctx.reply("⚠️ Limite gratuite atteinte. Passe Premium pour scans illimités.")
 
 }
 
 try{
 
-let found = false
-
-for(const league of LEAGUES){
-
-await new Promise(r=>setTimeout(r,2000))
-
-const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal`
+const url = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal`
 
 const res = await axios.get(url)
 
 const matches = res.data
 
-if(!matches) continue
+let found = false
 
 for(const match of matches){
 
@@ -118,18 +97,14 @@ const away = match.away_team
 
 for(const bookmaker of match.bookmakers){
 
-if(!bookmaker.markets) continue
-
 for(const market of bookmaker.markets){
-
-if(!market.outcomes) continue
 
 for(const outcome of market.outcomes){
 
 const odds = outcome.price
 const pick = outcome.name
 
-if(!odds || odds < 1.30 || odds > 3.2) continue
+if(!odds || odds < 1.30 || odds > 3) continue
 
 const bookProb = 1 / odds
 
@@ -150,7 +125,7 @@ if(!isPremium){
 userStats[user]++
 }
 
-ctx.reply(`🔥 VALUE BET IA
+return ctx.reply(`🔥 VALUE BET IA
 
 🏆 ${home} vs ${away}
 
@@ -172,19 +147,13 @@ ctx.reply(`🔥 VALUE BET IA
 
 }
 
-}
-
 if(!found){
-
-ctx.reply(`❌ Aucune value intéressante trouvée.
-
-🔥 Les meilleures analyses sont envoyées automatiquement aux membres Premium.`)
-
+ctx.reply("❌ Aucune value intéressante trouvée.")
 }
 
 }catch(err){
 
-console.log("SCAN ERROR:",err.message)
+console.log(err.message)
 
 ctx.reply("❌ Erreur lors du scan.")
 
@@ -216,7 +185,7 @@ bot.hears("🔥 Top Value Bets",(ctx)=>{
 
 ctx.reply(`🔥 TOP VALUE BETS
 
-Les meilleures analyses sont envoyées automatiquement chaque jour aux membres Premium.`)
+Les meilleures analyses sont envoyées automatiquement aux membres Premium.`)
 
 })
 
@@ -240,28 +209,19 @@ Une fois le paiement effectué, ton accès Premium sera activé.`)
 })
 
 
-// ALERTE QUOTIDIENNE PREMIUM
+// CONFIANCE PREMIUM QUOTIDIENNE
 
 async function dailySafeBet(){
 
 try{
 
-for(const league of LEAGUES){
-
-await new Promise(r=>setTimeout(r,2000))
-
-const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
+const url = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
 
 const res = await axios.get(url)
 
 const matches = res.data
 
-if(!matches) continue
-
 for(const match of matches){
-
-const home = match.home_team
-const away = match.away_team
 
 for(const bookmaker of match.bookmakers){
 
@@ -273,9 +233,9 @@ const odds = outcome.price
 
 if(odds >= 1.30 && odds <= 1.80){
 
-const message = `✅ CONFIANCE MATCH
+const message = `✅ CONFIANCE PREMIUM
 
-🏆 ${home} vs ${away}
+🏆 ${match.home_team} vs ${match.away_team}
 
 🎯 Pick : ${outcome.name}
 
@@ -299,8 +259,6 @@ return
 
 }
 
-}
-
 }catch(err){
 
 console.log("AUTO BET ERROR",err.message)
@@ -309,9 +267,84 @@ console.log("AUTO BET ERROR",err.message)
 
 }
 
-// 1 FOIS PAR JOUR
+
+// PRONO GRATUIT MERCREDI
+
+async function freeWednesdayPick(){
+
+try{
+
+const url = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
+
+const res = await axios.get(url)
+
+const matches = res.data
+
+for(const match of matches){
+
+for(const bookmaker of match.bookmakers){
+
+for(const market of bookmaker.markets){
+
+for(const outcome of market.outcomes){
+
+const odds = outcome.price
+
+if(odds >= 1.30 && odds <= 2.50){
+
+const message = `🤝 CONFIANCE DU MERCREDI OFFERTE
+
+🏆 ${match.home_team} vs ${match.away_team}
+
+🎯 Pick : ${outcome.name}
+
+💰 Cote : ${odds}
+
+🔥 Analyse offerte par IA VALUE BOT`
+
+users.forEach(user=>{
+bot.telegram.sendMessage(user,message)
+})
+
+return
+
+}
+
+}
+
+}
+
+}
+
+}
+
+}catch(err){
+
+console.log("FREE PICK ERROR",err.message)
+
+}
+
+}
+
+
+// TIMER QUOTIDIEN
 
 setInterval(dailySafeBet,86400000)
+
+
+// CHECK MERCREDI 10H
+
+setInterval(()=>{
+
+const now = new Date()
+
+if(now.getDay() === 3 && now.getHours() === 10 && now.getMinutes() === 0){
+
+freeWednesdayPick()
+
+}
+
+},60000)
 
 
 // TELEGRAM FIX
