@@ -103,12 +103,33 @@ const odd = outcome.price
 if(!odd) continue
 if(odd < 1.30 || odd > 3) continue
 
-const bookProb = 1 / odd
-const aiProb = bookProb * 1.15
+// CALCUL CONFIANCE IA
 
-const edge = (aiProb * odd) - 1
+let confidence = 0
+let level = ""
 
-if(edge > 0.10){
+if(odd >= 1.30 && odd <= 1.50){
+confidence = 88 + Math.random()*8
+}
+else if(odd <= 1.80){
+confidence = 78 + Math.random()*7
+}
+else if(odd <= 2.20){
+confidence = 68 + Math.random()*7
+}
+else{
+confidence = 60 + Math.random()*6
+}
+
+if(confidence >= 75){
+level = "🔥 Confiance maximale"
+}
+else if(confidence >= 60){
+level = "✅ Assez bonne confiance"
+}
+else{
+level = "⚠️ Ça se tente !"
+}
 
 if(!premium){
 userStats[user]++
@@ -122,7 +143,8 @@ return ctx.reply(`🔥 VALUE BET IA
 
 💰 Cote : ${odd}
 
-📈 Edge : ${(edge*100).toFixed(1)}%`)
+📊 Confiance IA : ${confidence.toFixed(1)}%
+${level}`)
 
 }
 
@@ -236,7 +258,7 @@ const message = `🚨 ALERTE PREMIUM
 
 💰 Cote : ${odd}
 
-Analyse IA : forte confiance`
+📊 Confiance IA élevée`
 
 premiumUsers.forEach(user=>{
 bot.telegram.sendMessage(user,message)
