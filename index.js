@@ -1,17 +1,14 @@
 const { Telegraf, Markup } = require("telegraf")
 const axios = require("axios")
-const Stripe = require("stripe")
 
 console.log("🚀 IA VALUE BOT PRO START")
 
-// VARIABLES
 const bot = new Telegraf(process.env.BOT_TOKEN)
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 const MAX_FREE_SCANS = 2
 const userStats = {}
 
-// LIGUES (IDS OFFICIELS THE ODDS API)
+// LIGUES MAJEURES
 const LEAGUES = [
 "soccer_epl",
 "soccer_spain_la_liga",
@@ -20,8 +17,8 @@ const LEAGUES = [
 "soccer_france_ligue_one"
 ]
 
-// MENU TELEGRAM
-const mainMenu = Markup.keyboard([
+// MENU
+const menu = Markup.keyboard([
 ["🔎 Scanner les matchs"],
 ["🔥 Top Value Bets"],
 ["📊 Mes statistiques"],
@@ -33,8 +30,8 @@ bot.start((ctx)=>{
 
 ctx.reply(`🤖 IA VALUE BOT PRO
 
-📊 Analyse intelligente des cotes
-🎯 Détection automatique de value bets
+Analyse intelligente des cotes
+Détection automatique de value bets
 
 ━━━━━━━━━━━━
 
@@ -42,7 +39,7 @@ ctx.reply(`🤖 IA VALUE BOT PRO
 💎 Premium = scans illimités
 
 ━━━━━━━━━━━━`,
-mainMenu)
+menu)
 
 })
 
@@ -57,7 +54,7 @@ userStats[user] = 0
 
 if(userStats[user] >= MAX_FREE_SCANS){
 
-return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour).\nPasse Premium pour scans illimités.")
+return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour). Passe Premium pour scans illimités.")
 
 }
 
@@ -65,68 +62,70 @@ try{
 
 for(const league of LEAGUES){
 
-const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
+const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal`
 
 const res = await axios.get(url)
 
 const matches = res.data
 
-if(!matches || matches.length === 0){
-continue
-}
+if(!matches || matches.length === 0) continue
 
 for(const match of matches){
 
 const home = match.home_team
 const away = match.away_team
 
-const market = match.bookmakers?.[0]?.markets?.[0]
+for(const bookmaker of match.bookmakers){
 
-if(!market) continue
+for(const market of bookmaker.markets){
 
 for(const outcome of market.outcomes){
 
 const odds = outcome.price
-const team = outcome.name
+const pick = outcome.name
 
 if(!odds || odds < 1.5) continue
 
-// PROBA BOOKMAKER
+// PROBABILITÉ BOOKMAKER
 const bookProb = 1 / odds
 
-// PROBA IA
+// AJUSTEMENT IA
 let aiProb = bookProb
 
 if(odds >= 3){
-aiProb *= 1.25
+aiProb *= 1.30
 }
 
-if(odds >=2 && odds <3){
-aiProb *= 1.15
+if(odds >= 2 && odds < 3){
+aiProb *= 1.20
 }
 
-if(aiProb > 0.8){
-aiProb = 0.8
+if(aiProb > 0.82){
+aiProb = 0.82
 }
 
 // EDGE
 const edge = (aiProb * odds) - 1
 
-if(aiProb > 0.60 && edge > 0.15){
+if(aiProb > 0.62 && edge > 0.18){
 
 userStats[user]++
 
-return ctx.reply(`🔥 VALUE BET DÉTECTÉ
+return ctx.reply(`🔥 VALUE BET IA
 
 🏆 ${home} vs ${away}
 
-🎯 Pick : ${team}
+🎯 Pick : ${pick}
 
 📊 Probabilité IA : ${(aiProb*100).toFixed(1)}%
 📉 Probabilité Book : ${(bookProb*100).toFixed(1)}%
 
 💰 Cote : ${odds}
 📈 Edge : ${(edge*100).toFixed(1)}%`)
+
+}
+
+}
 
 }
 
@@ -162,7 +161,7 @@ Statut : 🆓 Gratuit`)
 
 })
 
-// TOP VALUE BETS
+// TOP VALUE
 bot.hears("🔥 Top Value Bets",(ctx)=>{
 
 ctx.reply(`🔥 TOP VALUE BETS
@@ -173,53 +172,27 @@ Les meilleures analyses seront envoyées automatiquement chaque jour.`)
 
 })
 
-// PREMIUM STRIPE
-bot.hears("💎 Passer Premium", async (ctx)=>{
-
-try{
-
-const session = await stripe.checkout.sessions.create({
-
-payment_method_types:["card"],
-
-mode:"subscription",
-
-line_items:[
-{
-price: process.env.STRIPE_PRICE_ID,
-quantity:1
-}
-],
-
-success_url:"https://t.me/PerfctIAbot",
-cancel_url:"https://t.me/PerfctIAbot"
-
-})
+// PREMIUM
+bot.hears("💎 Passer Premium",(ctx)=>{
 
 ctx.reply(`💎 PREMIUM IA VALUE BOT
 
 Accès illimité aux scans
-Alertes value bets IA
-Analyses avancées
+Value bets IA avancées
+Alertes automatiques
 
 Clique ici pour t'abonner :
 
-${session.url}`)
+https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00
 
-}catch(error){
-
-console.log("STRIPE ERROR:", error)
-
-ctx.reply("❌ Impossible de créer le paiement.")
-
-}
+Une fois le paiement effectué, ton accès Premium sera activé.`)
 
 })
 
-// CORRECTION ERREUR TELEGRAM 409
+// FIX TELEGRAM
 bot.telegram.deleteWebhook()
 
-// LANCEMENT BOT
+// START BOT
 bot.launch()
 
 console.log("✅ BOT LANCÉ")
