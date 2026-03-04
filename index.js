@@ -5,10 +5,12 @@ console.log("🚀 IA VALUE BOT PRO START")
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
+const ODDS_API_KEY = process.env.ODDS_API_KEY
+const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY
+
 const MAX_FREE_SCANS = 2
 const userStats = {}
 
-// LIGUES MAJEURES
 const LEAGUES = [
 "soccer_epl",
 "soccer_spain_la_liga",
@@ -38,12 +40,43 @@ Détection automatique de value bets
 🆓 2 scans gratuits / jour
 💎 Premium = scans illimités
 
-━━━━━━━━━━━━`,
-menu)
+━━━━━━━━━━━━`,menu)
 
 })
 
+
+// RECUPERER STATS EQUIPE (API FOOTBALL)
+
+async function getTeamBoost(team){
+
+try{
+
+const res = await axios.get(
+`https://v3.football.api-sports.io/teams?search=${team}`,
+{
+headers:{
+"x-apisports-key": FOOTBALL_API_KEY
+}
+})
+
+if(!res.data.response || res.data.response.length === 0){
+return 1
+}
+
+// petit boost si équipe connue
+return 1.05
+
+}catch(err){
+
+return 1
+
+}
+
+}
+
+
 // SCAN MATCHS
+
 bot.hears("🔎 Scanner les matchs", async (ctx)=>{
 
 const user = ctx.from.id
@@ -53,16 +86,16 @@ userStats[user] = 0
 }
 
 if(userStats[user] >= MAX_FREE_SCANS){
-
 return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour). Passe Premium pour scans illimités.")
-
 }
 
 try{
 
+let found = false
+
 for(const league of LEAGUES){
 
-const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal`
+const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
 
 const res = await axios.get(url)
 
@@ -75,9 +108,19 @@ for(const match of matches){
 const home = match.home_team
 const away = match.away_team
 
+if(!match.bookmakers) continue
+
+// récupération stats équipe
+const homeBoost = await getTeamBoost(home)
+const awayBoost = await getTeamBoost(away)
+
 for(const bookmaker of match.bookmakers){
 
+if(!bookmaker.markets) continue
+
 for(const market of bookmaker.markets){
+
+if(!market.outcomes) continue
 
 for(const outcome of market.outcomes){
 
@@ -86,17 +129,21 @@ const pick = outcome.name
 
 if(!odds || odds < 1.5) continue
 
-// PROBABILITÉ BOOKMAKER
 const bookProb = 1 / odds
 
-// AJUSTEMENT IA
 let aiProb = bookProb
+
+if(pick === home){
+aiProb *= homeBoost
+}
+
+if(pick === away){
+aiProb *= awayBoost
+}
 
 if(odds >= 3){
 aiProb *= 1.30
-}
-
-if(odds >= 2 && odds < 3){
+}else if(odds >= 2){
 aiProb *= 1.20
 }
 
@@ -104,12 +151,13 @@ if(aiProb > 0.82){
 aiProb = 0.82
 }
 
-// EDGE
 const edge = (aiProb * odds) - 1
 
 if(aiProb > 0.62 && edge > 0.18){
 
 userStats[user]++
+
+found = true
 
 return ctx.reply(`🔥 VALUE BET IA
 
@@ -135,11 +183,13 @@ return ctx.reply(`🔥 VALUE BET IA
 
 }
 
+if(!found){
 ctx.reply("❌ Aucune value intéressante trouvée.")
+}
 
 }catch(err){
 
-console.log("SCAN ERROR:", err.message)
+console.log("SCAN ERROR:", err.response?.data || err.message)
 
 ctx.reply("❌ Erreur lors du scan.")
 
@@ -147,7 +197,9 @@ ctx.reply("❌ Erreur lors du scan.")
 
 })
 
+
 // STATS
+
 bot.hears("📊 Mes statistiques",(ctx)=>{
 
 const user = ctx.from.id
@@ -161,7 +213,9 @@ Statut : 🆓 Gratuit`)
 
 })
 
+
 // TOP VALUE
+
 bot.hears("🔥 Top Value Bets",(ctx)=>{
 
 ctx.reply(`🔥 TOP VALUE BETS
@@ -172,7 +226,9 @@ Les meilleures analyses seront envoyées automatiquement chaque jour.`)
 
 })
 
+
 // PREMIUM
+
 bot.hears("💎 Passer Premium",(ctx)=>{
 
 ctx.reply(`💎 PREMIUM IA VALUE BOT
@@ -189,10 +245,13 @@ Une fois le paiement effectué, ton accès Premium sera activé.`)
 
 })
 
+
 // FIX TELEGRAM
+
 bot.telegram.deleteWebhook()
 
 // START BOT
+
 bot.launch()
 
 console.log("✅ BOT LANCÉ")
