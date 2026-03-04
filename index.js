@@ -28,7 +28,6 @@ users.add(user)
 const param = ctx.startPayload
 
 if(param === "premium"){
-
 premiumUsers.add(user)
 
 ctx.reply(`👑 Bienvenue dans la Team Gagnante !
@@ -66,9 +65,11 @@ if(!premium && userStats[user] >= MAX_FREE_SCANS){
 return ctx.reply("⚠️ Limite gratuite atteinte.")
 }
 
-try{
+try {
 
-const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
+const response = await axios.get(
+"https://api.the-odds-api.com/v4/sports/soccer_epl/odds",
+{
 params:{
 apiKey:process.env.ODDS_API_KEY,
 regions:"eu",
@@ -77,7 +78,7 @@ oddsFormat:"decimal"
 }
 })
 
-const matches = res.data
+const matches = response.data
 
 if(!matches || matches.length === 0){
 return ctx.reply("❌ Aucun match trouvé.")
@@ -105,16 +106,16 @@ let confidence = 0
 let level = ""
 
 if(odd >= 1.30 && odd <= 1.50){
-confidence = 88 + Math.random()*8
+confidence = 90
 }
 else if(odd <= 1.80){
-confidence = 78 + Math.random()*7
+confidence = 82
 }
 else if(odd <= 2.20){
-confidence = 68 + Math.random()*7
+confidence = 70
 }
 else{
-confidence = 60 + Math.random()*6
+confidence = 60
 }
 
 if(confidence >= 75){
@@ -139,7 +140,7 @@ return ctx.reply(`🔥 VALUE BET IA
 
 💰 Cote : ${odd}
 
-📊 Confiance IA : ${confidence.toFixed(1)}%
+📊 Confiance IA : ${confidence}%
 ${level}`)
 
 }
@@ -154,10 +155,9 @@ ${level}`)
 
 ctx.reply("❌ Aucune value intéressante trouvée.")
 
-}catch(err){
+} catch(err) {
 
 console.log("SCAN ERROR:", err.message)
-
 ctx.reply("❌ Erreur lors du scan.")
 
 }
@@ -212,165 +212,6 @@ Une fois le paiement effectué, ton accès Premium sera activé.`)
 })
 
 
-// ALERTES PREMIUM
-
-async function premiumAlert(){
-
-try{
-
-const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
-params:{
-apiKey:process.env.ODDS_API_KEY,
-regions:"eu",
-markets:"h2h",
-oddsFormat:"decimal"
-}
-})
-
-const matches = res.data
-
-for(const match of matches){
-
-const home = match.home_team
-const away = match.away_team
-
-if(!match.bookmakers) continue
-
-for(const bookmaker of match.bookmakers){
-
-for(const market of bookmaker.markets){
-
-for(const outcome of market.outcomes){
-
-const odd = outcome.price
-
-if(odd >= 1.30 && odd <= 1.80){
-
-const message = `🚨 ALERTE PREMIUM
-
-🏆 ${home} vs ${away}
-
-🎯 Pick : ${outcome.name}
-
-💰 Cote : ${odd}
-
-📊 Confiance IA élevée`
-
-premiumUsers.forEach(user=>{
-bot.telegram.sendMessage(user,message)
-})
-
-return
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}catch(err){
-
-console.log("ALERT ERROR:", err.message)
-
-}
-
-}
-
-
-// PRONOSTIC GRATUIT MERCREDI
-
-async function freeWednesday(){
-
-try{
-
-const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
-params:{
-apiKey:process.env.ODDS_API_KEY,
-regions:"eu",
-markets:"h2h",
-oddsFormat:"decimal"
-}
-})
-
-const matches = res.data
-
-for(const match of matches){
-
-const home = match.home_team
-const away = match.away_team
-
-if(!match.bookmakers) continue
-
-for(const bookmaker of match.bookmakers){
-
-for(const market of bookmaker.markets){
-
-for(const outcome of market.outcomes){
-
-const odd = outcome.price
-
-if(odd >= 1.30 && odd <= 2.50){
-
-const message = `🤝 CONFIANCE DU MERCREDI OFFERTE
-
-🏆 ${home} vs ${away}
-
-🎯 Pick : ${outcome.name}
-
-💰 Cote : ${odd}
-
-Analyse offerte par IA VALUE BOT`
-
-users.forEach(user=>{
-bot.telegram.sendMessage(user,message)
-})
-
-return
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}catch(err){
-
-console.log("FREE ERROR:", err.message)
-
-}
-
-}
-
-
-// ALERTES PREMIUM toutes les 2h
-
-setInterval(premiumAlert,7200000)
-
-
-// MERCREDI 10h10 FRANCE
-
-setInterval(()=>{
-
-const now = new Date()
-
-const hour = now.getUTCHours()
-const minute = now.getUTCMinutes()
-
-if(now.getUTCDay() === 3 && hour === 9 && minute === 10){
-freeWednesday()
-}
-
-},60000)
-
-
 // TELEGRAM
 
 bot.telegram.deleteWebhook()
@@ -378,3 +219,6 @@ bot.telegram.deleteWebhook()
 bot.launch()
 
 console.log("✅ BOT LANCÉ")
+
+process.once("SIGINT",()=>bot.stop("SIGINT"))
+process.once("SIGTERM",()=>bot.stop("SIGTERM"))
