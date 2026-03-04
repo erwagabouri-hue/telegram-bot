@@ -10,16 +10,34 @@ const MAX_FREE_SCANS = 2
 const userStats = {}
 const premiumUsers = new Set()
 
-// LIGUES MAJEURES
+// LIGUES SCANNÉES (VERSION PRO)
+
 const LEAGUES = [
+
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_germany_bundesliga",
 "soccer_italy_serie_a",
-"soccer_france_ligue_one"
+"soccer_france_ligue_one",
+
+"soccer_netherlands_eredivisie",
+"soccer_portugal_primeira_liga",
+"soccer_turkey_super_league",
+
+"soccer_belgium_first_div",
+"soccer_denmark_superliga",
+"soccer_sweden_allsvenskan",
+
+"soccer_brazil_campeonato",
+"soccer_argentina_primera",
+
+"soccer_japan_j_league",
+"soccer_australia_aleague"
+
 ]
 
 // MENU
+
 const menu = Markup.keyboard([
 ["🔎 Scanner les matchs"],
 ["🔥 Top Value Bets"],
@@ -28,12 +46,12 @@ const menu = Markup.keyboard([
 ]).resize()
 
 // START
+
 bot.start((ctx)=>{
 
 const user = ctx.from.id
 const param = ctx.startPayload
 
-// UTILISATEUR PREMIUM APRÈS PAIEMENT
 if(param === "premium"){
 
 premiumUsers.add(user)
@@ -42,13 +60,16 @@ ctx.reply(`👑 Bienvenue dans la Team Gagnante !
 
 Ton accès Premium est maintenant activé.
 
-Tu as maintenant accès aux scans illimités et aux alertes exclusives.
+Tu as maintenant accès :
 
-Prépare-toi à encaisser les meilleures value bets détectées par l’IA.
+• aux scans illimités
+• aux value bets avancées
+• aux alertes automatiques
 
-🚀 Les opportunités arrivent…`)
+Prépare-toi à encaisser les meilleures opportunités détectées par l’IA.`)
 
 return
+
 }
 
 ctx.reply(`🤖 IA VALUE BOT PRO
@@ -58,25 +79,29 @@ Détection automatique de value bets
 
 ━━━━━━━━━━━━
 
-🆓 2 scans gratuits / jour
+🆓 2 scans gratuits par jour
 💎 Premium = scans illimités
 
 ━━━━━━━━━━━━`,menu)
 
 })
 
+
 // SCAN MATCHS
+
 bot.hears("🔎 Scanner les matchs", async (ctx)=>{
 
 const user = ctx.from.id
 const isPremium = premiumUsers.has(user)
 
-if(!userStats[user]){
-userStats[user] = 0
-}
+if(!userStats[user]) userStats[user] = 0
 
 if(!isPremium && userStats[user] >= MAX_FREE_SCANS){
-return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour). Passe Premium pour scans illimités.")
+
+return ctx.reply(`⚠️ Limite gratuite atteinte.
+
+Passe Premium pour accéder aux scans illimités et aux alertes exclusives.`)
+
 }
 
 try{
@@ -85,7 +110,11 @@ let found = false
 
 for(const league of LEAGUES){
 
-const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
+// petite pause pour éviter blocage API
+
+await new Promise(r=>setTimeout(r,1500))
+
+const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal`
 
 const res = await axios.get(url)
 
@@ -113,7 +142,7 @@ for(const outcome of market.outcomes){
 const odds = outcome.price
 const pick = outcome.name
 
-if(!odds || odds < 1.30 || odds > 3) continue
+if(!odds || odds < 1.30 || odds > 3.5) continue
 
 const bookProb = 1 / odds
 
@@ -126,7 +155,7 @@ if(aiProb > 0.82) aiProb = 0.82
 
 const edge = (aiProb * odds) - 1
 
-if(aiProb > 0.62 && edge > 0.18){
+if(aiProb > 0.62 && edge > 0.15){
 
 found = true
 
@@ -141,7 +170,7 @@ ctx.reply(`🔥 VALUE BET IA
 🎯 Pick : ${pick}
 
 📊 Probabilité IA : ${(aiProb*100).toFixed(1)}%
-📉 Probabilité Book : ${(bookProb*100).toFixed(1)}
+📉 Probabilité Book : ${(bookProb*100).toFixed(1)}%
 
 💰 Cote : ${odds}
 📈 Edge : ${(edge*100).toFixed(1)}%`)
@@ -159,12 +188,16 @@ ctx.reply(`🔥 VALUE BET IA
 }
 
 if(!found){
-ctx.reply("❌ Aucune value intéressante trouvée.")
+
+ctx.reply(`❌ Aucune value intéressante trouvée.
+
+🔥 Les meilleures analyses sont envoyées automatiquement aux membres Premium.`)
+
 }
 
 }catch(err){
 
-console.log("SCAN ERROR:", err.message)
+console.log("SCAN ERROR:",err.message)
 
 ctx.reply("❌ Erreur lors du scan.")
 
@@ -172,7 +205,9 @@ ctx.reply("❌ Erreur lors du scan.")
 
 })
 
-// STATS
+
+// STATISTIQUES
+
 bot.hears("📊 Mes statistiques",(ctx)=>{
 
 const user = ctx.from.id
@@ -187,18 +222,20 @@ Statut : ${premium ? "💎 Premium" : "🆓 Gratuit"}`)
 
 })
 
+
 // TOP VALUE
+
 bot.hears("🔥 Top Value Bets",(ctx)=>{
 
 ctx.reply(`🔥 TOP VALUE BETS
 
-Fonction en cours de développement.
-
-Les meilleures analyses seront envoyées automatiquement chaque jour.`)
+Les meilleures analyses seront envoyées automatiquement chaque jour aux membres Premium.`)
 
 })
 
+
 // PREMIUM
+
 bot.hears("💎 Passer Premium",(ctx)=>{
 
 ctx.reply(`💎 PREMIUM IA VALUE BOT
@@ -216,13 +253,15 @@ Une fois le paiement effectué, ton accès Premium sera activé.`)
 })
 
 
-// NOTIFICATION CONFIANCE MATCH (1 FOIS PAR JOUR)
+// NOTIFICATION QUOTIDIENNE PREMIUM
 
 async function dailySafeBet(){
 
 try{
 
 for(const league of LEAGUES){
+
+await new Promise(r=>setTimeout(r,1500))
 
 const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
 
@@ -284,13 +323,14 @@ console.log("AUTO BET ERROR",err.message)
 }
 
 // 1 FOIS PAR JOUR
-setInterval(dailySafeBet, 86400000)
+
+setInterval(dailySafeBet,86400000)
 
 
-// FIX TELEGRAM
+// TELEGRAM FIX
+
 bot.telegram.deleteWebhook()
 
-// START BOT
 bot.launch()
 
 console.log("✅ BOT LANCÉ")
