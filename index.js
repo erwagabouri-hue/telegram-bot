@@ -1,281 +1,217 @@
-const { Telegraf } = require("telegraf");
+const { Telegraf, Markup } = require("telegraf");
 const axios = require("axios");
 const Stripe = require("stripe");
 
-console.log("IA VALUE BOT PRO DEMARRE");
+console.log("IA VALUE BOT PRO STARTING");
 
+// VARIABLES
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const MAX_FREE_ALERTS = 2;
-
 const userAlerts = {};
-const premiumUsers = new Set();
 
 const MAJOR_LEAGUES = [
-"soccer_epl",
-"soccer_spain_la_liga",
-"soccer_germany_bundesliga",
-"soccer_italy_serie_a",
-"soccer_france_ligue_one"
+  "soccer_epl",
+  "soccer_spain_la_liga",
+  "soccer_germany_bundesliga",
+  "soccer_italy_serie_a",
+  "soccer_france_ligue_one"
 ];
 
+// MENU BOUTONS
+function mainMenu() {
+  return Markup.keyboard([
+    ["🔎 Scanner les matchs"],
+    ["🔥 Top Value Bets"],
+    ["📊 Mes statistiques"],
+    ["💎 Passer Premium"]
+  ]).resize();
+}
 
-// MENU
-
-bot.start(async (ctx)=>{
-
-ctx.reply(
+// START
+bot.start((ctx) => {
+  ctx.reply(
 `🤖 IA VALUE BOT PRO
 
 🎯 Analyse intelligente des cotes
-📊 Détection de Value Bets
+📊 Détection de value bets
 
-━━━━━━━━━━━━━━
+━━━━━━━━━━━━
 
 🆓 2 scans gratuits / jour
 💎 Premium = scans illimités
 
-━━━━━━━━━━━━━━`,
-{
-reply_markup:{
-inline_keyboard:[
-[{ text:"🔎 Scanner les matchs", callback_data:"scan"}],
-[{ text:"🔥 Top Value Bets", callback_data:"top"}],
-[{ text:"📊 Mes statistiques", callback_data:"stats"}],
-[{ text:"💎 Passer Premium", callback_data:"premium"}]
-]
-}
-}
+━━━━━━━━━━━━`,
+mainMenu()
 );
-
 });
 
+// SCAN MATCHS
+bot.hears("🔎 Scanner les matchs", async (ctx) => {
 
-// STATS
+  const userId = ctx.from.id;
 
-bot.action("stats",(ctx)=>{
+  if (!userAlerts[userId]) userAlerts[userId] = 0;
 
-const userId = ctx.from.id;
-const used = userAlerts[userId] || 0;
+  if (userAlerts[userId] >= MAX_FREE_ALERTS) {
+    return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour). Passe Premium.");
+  }
 
-ctx.reply(
-`📊 TES STATISTIQUES
+  try {
 
-Analyses utilisées : ${used}/${MAX_FREE_ALERTS}
+    for (const league of MAJOR_LEAGUES) {
 
-Statut : ${premiumUsers.has(userId) ? "💎 Premium" : "🆓 Gratuit"}`
-);
+      const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`;
 
-});
+      const response = await axios.get(url);
+      const matches = response.data;
 
+      if (!matches.length) continue;
 
-// PREMIUM
+      for (const match of matches) {
 
-bot.action("premium", async(ctx)=>{
+        const home = match.home_team;
+        const away = match.away_team;
 
-try{
+        const market = match.bookmakers?.[0]?.markets?.[0];
+        if (!market) continue;
 
-const session = await stripe.checkout.sessions.create({
+        const outcomes = market.outcomes;
 
-payment_method_types:["card"],
+        for (const outcome of outcomes) {
 
-mode:"subscription",
+          const team = outcome.name;
+          const odds = outcome.price;
 
-line_items:[
-{
-price:process.env.STRIPE_PRICE_ID,
-quantity:1
-}
-],
+          if (!odds || odds < 1.5) continue;
 
-success_url:"https://t.me/PerfctIAbot",
-cancel_url:"https://t.me/PerfctIAbot"
+          const impliedProbability = 1 / odds;
 
-});
+          let aiProbability = impliedProbability;
 
-ctx.reply(
-`💎 PREMIUM IA VALUE BOT
+          if (odds >= 3) aiProbability *= 1.25;
+          if (odds >= 2 && odds < 3) aiProbability *= 1.15;
 
-Accès illimité aux analyses.
+          if (aiProbability > 0.8) aiProbability = 0.8;
 
-Clique ici pour payer :
+          const edge = (aiProbability * odds) - 1;
 
-${session.url}`
-);
+          if (aiProbability > 0.60 && edge > 0.15) {
 
-}catch(error){
+            userAlerts[userId]++;
 
-console.log(error);
-ctx.reply("❌ Impossible de créer le paiement.");
+            return ctx.reply(
 
-}
-
-});
-
-
-// SCAN BOUTON
-
-bot.action("scan", async(ctx)=>{
-await ctx.answerCbQuery();
-scanMatches(ctx);
-});
-
-
-// COMMANDE SCAN
-
-bot.command("scan",(ctx)=>{
-scanMatches(ctx);
-});
-
-
-// SCAN
-
-async function scanMatches(ctx){
-
-try{
-
-const userId = ctx.from.id;
-
-if(!premiumUsers.has(userId)){
-
-if(!userAlerts[userId]) userAlerts[userId] = 0;
-
-if(userAlerts[userId] >= MAX_FREE_ALERTS){
-
-return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour).\nPasse Premium pour continuer.");
-
-}
-
-}
-
-for(const league of MAJOR_LEAGUES){
-
-const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`;
-
-const response = await axios.get(url);
-
-const matches = response.data;
-
-if(!matches) continue;
-
-for(const match of matches){
-
-const home = match.home_team;
-const away = match.away_team;
-
-const market = match.bookmakers?.[0]?.markets?.[0];
-if(!market) continue;
-
-const outcomes = market.outcomes;
-
-const homeOdds = outcomes.find(o=>o.name===home)?.price;
-const drawOdds = outcomes.find(o=>o.name==="Draw")?.price;
-const awayOdds = outcomes.find(o=>o.name===away)?.price;
-
-if(!homeOdds || !drawOdds || !awayOdds) continue;
-
-const pHome = 1/homeOdds;
-const pDraw = 1/drawOdds;
-const pAway = 1/awayOdds;
-
-const overround = pHome + pDraw + pAway;
-
-const trueHome = pHome/overround;
-const trueDraw = pDraw/overround;
-const trueAway = pAway/overround;
-
-const selections = [
-{team:home, odds:homeOdds, prob:trueHome},
-{team:"Draw", odds:drawOdds, prob:trueDraw},
-{team:away, odds:awayOdds, prob:trueAway}
-];
-
-for(const sel of selections){
-
-const EV = (sel.prob * sel.odds) - 1;
-
-if(EV > 0.08){
-
-if(!premiumUsers.has(userId)){
-userAlerts[userId]++;
-}
-
-return ctx.reply(
-
-`🔥 VALUE BET
+`🔥 ALERTE VALUE
 
 🏆 ${home} vs ${away}
+🎯 Pick : ${team}
 
-🎯 Pick : ${sel.team}
+📊 Probabilité IA : ${(aiProbability*100).toFixed(1)}%
+📉 Probabilité Book : ${(impliedProbability*100).toFixed(1)}%
 
-💰 Cote : ${sel.odds}
+💰 Cote : ${odds}
+📈 Edge : ${(edge*100).toFixed(1)}%`
 
-📊 Probabilité corrigée :
-${(sel.prob*100).toFixed(2)}%
+            );
 
-📈 Expected Value :
-${(EV*100).toFixed(2)}%
+          }
 
-📉 Marge bookmaker :
-${((overround-1)*100).toFixed(2)}%`
+        }
 
-);
+      }
 
-}
+    }
 
-}
+    ctx.reply("Aucune value intéressante trouvée.");
 
-}
+  } catch (error) {
 
-}
+    console.log(error);
+    ctx.reply("Erreur lors du scan.");
 
-ctx.reply("Aucune value intéressante trouvée.");
+  }
 
-}catch(error){
+});
 
-console.log(error);
-ctx.reply("Erreur lors du scan.");
+// STATS
+bot.hears("📊 Mes statistiques", (ctx) => {
 
-}
+  const userId = ctx.from.id;
+  const used = userAlerts[userId] || 0;
 
-}
+  ctx.reply(
+`📊 TES STATISTIQUES
 
+Analyses utilisées : ${used}/2
 
-// TOP VALUE
+Statut : 🆓 Gratuit`
+  );
 
-bot.action("top",(ctx)=>{
+});
 
-ctx.reply(
+// TOP VALUE BETS
+bot.hears("🔥 Top Value Bets", (ctx) => {
+
+  ctx.reply(
 `🔥 TOP VALUE BETS
 
 Fonction en cours de développement.
 
 Les meilleures analyses seront bientôt envoyées automatiquement.`
-);
+  );
 
 });
 
+// PREMIUM STRIPE
+bot.hears("💎 Passer Premium", async (ctx) => {
 
-// SCAN AUTOMATIQUE PREMIUM (1 HEURE)
+  try {
 
-setInterval(()=>{
+    const session = await stripe.checkout.sessions.create({
 
-console.log("Scan automatique Premium");
+      payment_method_types: ["card"],
+      mode: "subscription",
 
-},3600000);
+      line_items: [
+        {
+          price: process.env.STRIPE_PRICE_ID,
+          quantity: 1,
+        },
+      ],
 
+      success_url: "https://t.me/PerfctIAbot",
+      cancel_url: "https://t.me/PerfctIAbot",
 
+    });
+
+    ctx.reply(
+`💎 PREMIUM IA VALUE BOT
+
+Accès illimité aux scans
+Alertes IA avancées
+Value bets premium
+
+Clique ici pour t'abonner :
+
+${session.url}`
+    );
+
+  } catch (error) {
+
+    console.log("STRIPE ERROR:", error);
+    ctx.reply("❌ Impossible de créer le paiement.");
+
+  }
+
+});
 
 // LANCEMENT BOT
-
-bot.telegram.deleteWebhook().then(()=>{
-
 bot.launch();
 
-console.log("BOT TELEGRAM LANCE");
+console.log("BOT LANCÉ");
 
-});
-
-process.once("SIGINT",()=>bot.stop("SIGINT"));
-process.once("SIGTERM",()=>bot.stop("SIGTERM"));
+// STOP PROPRE
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
