@@ -11,16 +11,16 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 const MAX_FREE_SCANS = 2
 const userStats = {}
 
-// LIGUES ANALYSÉES
+// LIGUES (IDS OFFICIELS THE ODDS API)
 const LEAGUES = [
-"football_epl",
-"football_spain_la_liga",
-"football_germany_bundesliga",
-"football_italy_serie_a",
-"football_france_ligue_one"
+"soccer_epl",
+"soccer_spain_la_liga",
+"soccer_germany_bundesliga",
+"soccer_italy_serie_a",
+"soccer_france_ligue_one"
 ]
 
-// MENU PRINCIPAL
+// MENU TELEGRAM
 const mainMenu = Markup.keyboard([
 ["🔎 Scanner les matchs"],
 ["🔥 Top Value Bets"],
@@ -52,7 +52,7 @@ bot.hears("🔎 Scanner les matchs", async (ctx)=>{
 const user = ctx.from.id
 
 if(!userStats[user]){
-userStats[user]=0
+userStats[user] = 0
 }
 
 if(userStats[user] >= MAX_FREE_SCANS){
@@ -71,7 +71,9 @@ const res = await axios.get(url)
 
 const matches = res.data
 
-if(!matches.length) continue
+if(!matches || matches.length === 0){
+continue
+}
 
 for(const match of matches){
 
@@ -89,10 +91,10 @@ const team = outcome.name
 
 if(!odds || odds < 1.5) continue
 
-// PROBABILITÉ BOOKMAKER
+// PROBA BOOKMAKER
 const bookProb = 1 / odds
 
-// PROBABILITÉ IA AMÉLIORÉE
+// PROBA IA
 let aiProb = bookProb
 
 if(odds >= 3){
@@ -138,7 +140,7 @@ ctx.reply("❌ Aucune value intéressante trouvée.")
 
 }catch(err){
 
-console.log(err)
+console.log("SCAN ERROR:", err.message)
 
 ctx.reply("❌ Erreur lors du scan.")
 
@@ -160,7 +162,7 @@ Statut : 🆓 Gratuit`)
 
 })
 
-// TOP BETS
+// TOP VALUE BETS
 bot.hears("🔥 Top Value Bets",(ctx)=>{
 
 ctx.reply(`🔥 TOP VALUE BETS
@@ -197,7 +199,7 @@ cancel_url:"https://t.me/PerfctIAbot"
 ctx.reply(`💎 PREMIUM IA VALUE BOT
 
 Accès illimité aux scans
-Alertes value bets
+Alertes value bets IA
 Analyses avancées
 
 Clique ici pour t'abonner :
@@ -206,13 +208,16 @@ ${session.url}`)
 
 }catch(error){
 
-console.log("STRIPE ERROR :", error)
+console.log("STRIPE ERROR:", error)
 
 ctx.reply("❌ Impossible de créer le paiement.")
 
 }
 
 })
+
+// CORRECTION ERREUR TELEGRAM 409
+bot.telegram.deleteWebhook()
 
 // LANCEMENT BOT
 bot.launch()
