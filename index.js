@@ -1,5 +1,6 @@
 const { Telegraf, Markup } = require("telegraf")
 const axios = require("axios")
+const fs = require("fs")
 
 console.log("🚀 IA VALUE BOT PRO")
 
@@ -8,8 +9,34 @@ const bot = new Telegraf(process.env.BOT_TOKEN)
 const MAX_FREE_SCANS = 2
 
 const userStats = {}
-const premiumUsers = new Set()
 const users = new Set()
+
+// DATABASE
+
+let db = { premiumUsers: {} }
+
+if (fs.existsSync("database.json")) {
+  db = JSON.parse(fs.readFileSync("database.json"))
+}
+
+function saveDB(){
+  fs.writeFileSync("database.json", JSON.stringify(db, null, 2))
+}
+
+function isPremium(user){
+
+if(!db.premiumUsers[user]) return false
+
+if(Date.now() > db.premiumUsers[user]){
+
+delete db.premiumUsers[user]
+saveDB()
+
+return false
+}
+
+return true
+}
 
 // MENU
 
@@ -31,11 +58,14 @@ const param = ctx.startPayload
 
 if(param === "premium"){
 
-premiumUsers.add(user)
+const expire = Date.now() + (30*24*60*60*1000)
+
+db.premiumUsers[user] = expire
+saveDB()
 
 ctx.reply(`👑 Bienvenue dans la Team Gagnante !
 
-Ton accès Premium est activé.
+Ton accès Premium est activé pour 30 jours.
 
 Scans illimités
 Alertes automatiques
@@ -60,7 +90,7 @@ Détection automatique de value bets
 bot.hears("🔎 Scanner les matchs", async (ctx)=>{
 
 const user = ctx.from.id
-const premium = premiumUsers.has(user)
+const premium = isPremium(user)
 
 if(!userStats[user]) userStats[user] = 0
 
@@ -166,7 +196,7 @@ bot.hears("📊 Mes statistiques",(ctx)=>{
 
 const user = ctx.from.id
 const used = userStats[user] || 0
-const premium = premiumUsers.has(user)
+const premium = isPremium(user)
 
 ctx.reply(`📊 TES STATISTIQUES
 
@@ -251,9 +281,13 @@ const message = `🚨 ALERTE PREMIUM
 
 Analyse IA : forte confiance`
 
-premiumUsers.forEach(user=>{
+for(const user in db.premiumUsers){
+
+if(isPremium(user)){
 bot.telegram.sendMessage(user,message)
-})
+}
+
+}
 
 return
 
