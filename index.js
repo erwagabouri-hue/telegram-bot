@@ -11,8 +11,6 @@ const userStats = {}
 const premiumUsers = new Set()
 const users = new Set()
 
-// MENU
-
 const menu = Markup.keyboard([
 ["🔎 Scanner les matchs"],
 ["🔥 Top Value Bets"],
@@ -285,7 +283,7 @@ console.log("ALERT ERROR:",err.message)
 }
 
 
-// PRONO GRATUIT MERCREDI
+// PRONOSTIC GRATUIT MERCREDI
 
 async function freeWednesday(){
 
@@ -354,12 +352,12 @@ console.log("FREE ERROR:",err.message)
 }
 
 
-// ALERTES PREMIUM TOUTES LES 2H
+// ALERTES PREMIUM toutes les 2h
 
 setInterval(premiumAlert,7200000)
 
 
-// MERCREDI 10H10 FRANCE
+// MERCREDI 10h10 (France)
 
 setInterval(()=>{
 
@@ -369,9 +367,7 @@ const hour = now.getUTCHours()
 const minute = now.getUTCMinutes()
 
 if(now.getUTCDay() === 3 && hour === 9 && minute === 10){
-
 freeWednesday()
-
 }
 
 },60000)
