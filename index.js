@@ -11,10 +11,6 @@ const userStats = {}
 const premiumUsers = new Set()
 const users = new Set()
 
-// 7 LIGUES
-
-const LEAGUES = [39,140,135,78,61,94,88]
-
 // MENU
 
 const menu = Markup.keyboard([
@@ -59,62 +55,7 @@ Détection automatique de value bets
 })
 
 
-// MATCHS API FOOTBALL
-
-async function getMatches(){
-
-let allMatches = []
-
-for(const league of LEAGUES){
-
-const res = await axios.get("https://v3.football.api-sports.io/fixtures",{
-
-headers:{
-"x-apisports-key":process.env.API_FOOTBALL_KEY
-},
-
-params:{
-league:league,
-season:2024,
-next:5
-}
-
-})
-
-if(res.data.response){
-
-allMatches = allMatches.concat(res.data.response)
-
-}
-
-}
-
-return allMatches
-
-}
-
-
-// COTES ODDS API
-
-async function getOdds(){
-
-const res = await axios.get(`https://api.the-odds-api.com/v4/sports/soccer_epl/odds`,{
-
-params:{
-apiKey:process.env.ODDS_API_KEY,
-regions:"eu",
-markets:"h2h",
-oddsFormat:"decimal"
-}
-
-})
-
-return res.data
-
-}
-
-
-// SCAN MATCH
+// SCAN MATCHS
 
 bot.hears("🔎 Scanner les matchs", async (ctx)=>{
 
@@ -124,28 +65,34 @@ const premium = premiumUsers.has(user)
 if(!userStats[user]) userStats[user] = 0
 
 if(!premium && userStats[user] >= MAX_FREE_SCANS){
-
 return ctx.reply("⚠️ Limite gratuite atteinte.")
-
 }
 
 try{
 
-const matches = await getMatches()
-const odds = await getOdds()
+const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
+params:{
+apiKey:process.env.ODDS_API_KEY,
+regions:"eu",
+markets:"h2h",
+oddsFormat:"decimal"
+}
+})
+
+const matches = res.data
+
+if(!matches || matches.length === 0){
+return ctx.reply("❌ Aucun match trouvé.")
+}
 
 for(const match of matches){
 
-const home = match.teams.home.name
-const away = match.teams.away.name
+const home = match.home_team
+const away = match.away_team
 
-for(const oddMatch of odds){
+if(!match.bookmakers) continue
 
-if(oddMatch.home_team !== home) continue
-
-if(!oddMatch.bookmakers) continue
-
-for(const bookmaker of oddMatch.bookmakers){
+for(const bookmaker of match.bookmakers){
 
 for(const market of bookmaker.markets){
 
@@ -154,14 +101,14 @@ for(const outcome of market.outcomes){
 const odd = outcome.price
 
 if(!odd) continue
-
 if(odd < 1.30 || odd > 3) continue
 
 const bookProb = 1 / odd
-const aiProb = bookProb * 1.18
+const aiProb = bookProb * 1.15
+
 const edge = (aiProb * odd) - 1
 
-if(edge > 0.12){
+if(edge > 0.10){
 
 if(!premium){
 userStats[user]++
@@ -176,8 +123,6 @@ return ctx.reply(`🔥 VALUE BET IA
 💰 Cote : ${odd}
 
 📈 Edge : ${(edge*100).toFixed(1)}%`)
-
-}
 
 }
 
@@ -255,9 +200,18 @@ async function premiumAlert(){
 
 try{
 
-const odds = await getOdds()
+const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
+params:{
+apiKey:process.env.ODDS_API_KEY,
+regions:"eu",
+markets:"h2h",
+oddsFormat:"decimal"
+}
+})
 
-for(const match of odds){
+const matches = res.data
+
+for(const match of matches){
 
 const home = match.home_team
 const away = match.away_team
@@ -309,15 +263,24 @@ console.log("ALERT ERROR:",err.message)
 }
 
 
-// PRONO MERCREDI
+// PRONO GRATUIT MERCREDI
 
 async function freeWednesday(){
 
 try{
 
-const odds = await getOdds()
+const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
+params:{
+apiKey:process.env.ODDS_API_KEY,
+regions:"eu",
+markets:"h2h",
+oddsFormat:"decimal"
+}
+})
 
-for(const match of odds){
+const matches = res.data
+
+for(const match of matches){
 
 const home = match.home_team
 const away = match.away_team
@@ -369,18 +332,21 @@ console.log("FREE ERROR:",err.message)
 }
 
 
-// ALERTES 2H
+// ALERTES PREMIUM TOUTES LES 2H
 
 setInterval(premiumAlert,7200000)
 
 
-// MERCREDI 10H
+// MERCREDI 10H10 FRANCE
 
 setInterval(()=>{
 
 const now = new Date()
 
-if(now.getDay() === 3 && now.getHours() === 10 && now.getMinutes() === 0){
+const hour = now.getUTCHours()
+const minute = now.getUTCMinutes()
+
+if(now.getUTCDay() === 3 && hour === 9 && minute === 10){
 
 freeWednesday()
 
