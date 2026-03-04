@@ -1,41 +1,40 @@
-const { Telegraf, Markup } = require("telegraf");
-const axios = require("axios");
-const Stripe = require("stripe");
+const { Telegraf, Markup } = require("telegraf")
+const axios = require("axios")
+const Stripe = require("stripe")
 
-console.log("IA VALUE BOT PRO STARTING");
+console.log("🚀 IA VALUE BOT PRO START")
 
 // VARIABLES
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const bot = new Telegraf(process.env.BOT_TOKEN)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
-const MAX_FREE_ALERTS = 2;
-const userAlerts = {};
+const MAX_FREE_SCANS = 2
+const userStats = {}
 
-const MAJOR_LEAGUES = [
-  "soccer_epl",
-  "soccer_spain_la_liga",
-  "soccer_germany_bundesliga",
-  "soccer_italy_serie_a",
-  "soccer_france_ligue_one"
-];
+// LIGUES ANALYSÉES
+const LEAGUES = [
+"football_epl",
+"football_spain_la_liga",
+"football_germany_bundesliga",
+"football_italy_serie_a",
+"football_france_ligue_one"
+]
 
-// MENU BOUTONS
-function mainMenu() {
-  return Markup.keyboard([
-    ["🔎 Scanner les matchs"],
-    ["🔥 Top Value Bets"],
-    ["📊 Mes statistiques"],
-    ["💎 Passer Premium"]
-  ]).resize();
-}
+// MENU PRINCIPAL
+const mainMenu = Markup.keyboard([
+["🔎 Scanner les matchs"],
+["🔥 Top Value Bets"],
+["📊 Mes statistiques"],
+["💎 Passer Premium"]
+]).resize()
 
 // START
-bot.start((ctx) => {
-  ctx.reply(
-`🤖 IA VALUE BOT PRO
+bot.start((ctx)=>{
 
-🎯 Analyse intelligente des cotes
-📊 Détection de value bets
+ctx.reply(`🤖 IA VALUE BOT PRO
+
+📊 Analyse intelligente des cotes
+🎯 Détection automatique de value bets
 
 ━━━━━━━━━━━━
 
@@ -43,175 +42,182 @@ bot.start((ctx) => {
 💎 Premium = scans illimités
 
 ━━━━━━━━━━━━`,
-mainMenu()
-);
-});
+mainMenu)
+
+})
 
 // SCAN MATCHS
-bot.hears("🔎 Scanner les matchs", async (ctx) => {
+bot.hears("🔎 Scanner les matchs", async (ctx)=>{
 
-  const userId = ctx.from.id;
+const user = ctx.from.id
 
-  if (!userAlerts[userId]) userAlerts[userId] = 0;
+if(!userStats[user]){
+userStats[user]=0
+}
 
-  if (userAlerts[userId] >= MAX_FREE_ALERTS) {
-    return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour). Passe Premium.");
-  }
+if(userStats[user] >= MAX_FREE_SCANS){
 
-  try {
+return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour).\nPasse Premium pour scans illimités.")
 
-    for (const league of MAJOR_LEAGUES) {
+}
 
-      const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`;
+try{
 
-      const response = await axios.get(url);
-      const matches = response.data;
+for(const league of LEAGUES){
 
-      if (!matches.length) continue;
+const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
 
-      for (const match of matches) {
+const res = await axios.get(url)
 
-        const home = match.home_team;
-        const away = match.away_team;
+const matches = res.data
 
-        const market = match.bookmakers?.[0]?.markets?.[0];
-        if (!market) continue;
+if(!matches.length) continue
 
-        const outcomes = market.outcomes;
+for(const match of matches){
 
-        for (const outcome of outcomes) {
+const home = match.home_team
+const away = match.away_team
 
-          const team = outcome.name;
-          const odds = outcome.price;
+const market = match.bookmakers?.[0]?.markets?.[0]
 
-          if (!odds || odds < 1.5) continue;
+if(!market) continue
 
-          const impliedProbability = 1 / odds;
+for(const outcome of market.outcomes){
 
-          let aiProbability = impliedProbability;
+const odds = outcome.price
+const team = outcome.name
 
-          if (odds >= 3) aiProbability *= 1.25;
-          if (odds >= 2 && odds < 3) aiProbability *= 1.15;
+if(!odds || odds < 1.5) continue
 
-          if (aiProbability > 0.8) aiProbability = 0.8;
+// PROBABILITÉ BOOKMAKER
+const bookProb = 1 / odds
 
-          const edge = (aiProbability * odds) - 1;
+// PROBABILITÉ IA AMÉLIORÉE
+let aiProb = bookProb
 
-          if (aiProbability > 0.60 && edge > 0.15) {
+if(odds >= 3){
+aiProb *= 1.25
+}
 
-            userAlerts[userId]++;
+if(odds >=2 && odds <3){
+aiProb *= 1.15
+}
 
-            return ctx.reply(
+if(aiProb > 0.8){
+aiProb = 0.8
+}
 
-`🔥 ALERTE VALUE
+// EDGE
+const edge = (aiProb * odds) - 1
+
+if(aiProb > 0.60 && edge > 0.15){
+
+userStats[user]++
+
+return ctx.reply(`🔥 VALUE BET DÉTECTÉ
 
 🏆 ${home} vs ${away}
+
 🎯 Pick : ${team}
 
-📊 Probabilité IA : ${(aiProbability*100).toFixed(1)}%
-📉 Probabilité Book : ${(impliedProbability*100).toFixed(1)}%
+📊 Probabilité IA : ${(aiProb*100).toFixed(1)}%
+📉 Probabilité Book : ${(bookProb*100).toFixed(1)}%
 
 💰 Cote : ${odds}
-📈 Edge : ${(edge*100).toFixed(1)}%`
+📈 Edge : ${(edge*100).toFixed(1)}%`)
 
-            );
+}
 
-          }
+}
 
-        }
+}
 
-      }
+}
 
-    }
+ctx.reply("❌ Aucune value intéressante trouvée.")
 
-    ctx.reply("Aucune value intéressante trouvée.");
+}catch(err){
 
-  } catch (error) {
+console.log(err)
 
-    console.log(error);
-    ctx.reply("Erreur lors du scan.");
+ctx.reply("❌ Erreur lors du scan.")
 
-  }
+}
 
-});
+})
 
 // STATS
-bot.hears("📊 Mes statistiques", (ctx) => {
+bot.hears("📊 Mes statistiques",(ctx)=>{
 
-  const userId = ctx.from.id;
-  const used = userAlerts[userId] || 0;
+const user = ctx.from.id
+const used = userStats[user] || 0
 
-  ctx.reply(
-`📊 TES STATISTIQUES
+ctx.reply(`📊 TES STATISTIQUES
 
 Analyses utilisées : ${used}/2
 
-Statut : 🆓 Gratuit`
-  );
+Statut : 🆓 Gratuit`)
 
-});
+})
 
-// TOP VALUE BETS
-bot.hears("🔥 Top Value Bets", (ctx) => {
+// TOP BETS
+bot.hears("🔥 Top Value Bets",(ctx)=>{
 
-  ctx.reply(
-`🔥 TOP VALUE BETS
+ctx.reply(`🔥 TOP VALUE BETS
 
 Fonction en cours de développement.
 
-Les meilleures analyses seront bientôt envoyées automatiquement.`
-  );
+Les meilleures analyses seront envoyées automatiquement chaque jour.`)
 
-});
+})
 
 // PREMIUM STRIPE
-bot.hears("💎 Passer Premium", async (ctx) => {
+bot.hears("💎 Passer Premium", async (ctx)=>{
 
-  try {
+try{
 
-    const session = await stripe.checkout.sessions.create({
+const session = await stripe.checkout.sessions.create({
 
-      payment_method_types: ["card"],
-      mode: "subscription",
+payment_method_types:["card"],
 
-      line_items: [
-        {
-          price: process.env.STRIPE_PRICE_ID,
-          quantity: 1,
-        },
-      ],
+mode:"subscription",
 
-      success_url: "https://t.me/PerfctIAbot",
-      cancel_url: "https://t.me/PerfctIAbot",
+line_items:[
+{
+price: process.env.STRIPE_PRICE_ID,
+quantity:1
+}
+],
 
-    });
+success_url:"https://t.me/PerfctIAbot",
+cancel_url:"https://t.me/PerfctIAbot"
 
-    ctx.reply(
-`💎 PREMIUM IA VALUE BOT
+})
+
+ctx.reply(`💎 PREMIUM IA VALUE BOT
 
 Accès illimité aux scans
-Alertes IA avancées
-Value bets premium
+Alertes value bets
+Analyses avancées
 
 Clique ici pour t'abonner :
 
-${session.url}`
-    );
+${session.url}`)
 
-  } catch (error) {
+}catch(error){
 
-    console.log("STRIPE ERROR:", error);
-    ctx.reply("❌ Impossible de créer le paiement.");
+console.log("STRIPE ERROR :", error)
 
-  }
+ctx.reply("❌ Impossible de créer le paiement.")
 
-});
+}
+
+})
 
 // LANCEMENT BOT
-bot.launch();
+bot.launch()
 
-console.log("BOT LANCÉ");
+console.log("✅ BOT LANCÉ")
 
-// STOP PROPRE
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+process.once("SIGINT",()=>bot.stop("SIGINT"))
+process.once("SIGTERM",()=>bot.stop("SIGTERM"))
