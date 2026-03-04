@@ -6,7 +6,9 @@ console.log("🚀 IA VALUE BOT PRO START")
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 const MAX_FREE_SCANS = 2
+
 const userStats = {}
+const premiumUsers = new Set()
 
 // LIGUES MAJEURES
 const LEAGUES = [
@@ -28,14 +30,19 @@ const menu = Markup.keyboard([
 // START
 bot.start((ctx)=>{
 
+const user = ctx.from.id
 const param = ctx.startPayload
 
-// SI UTILISATEUR ARRIVE APRÈS PAIEMENT
+// UTILISATEUR PREMIUM APRÈS PAIEMENT
 if(param === "premium"){
+
+premiumUsers.add(user)
 
 ctx.reply(`👑 Bienvenue dans la Team Gagnante !
 
 Ton accès Premium est maintenant activé.
+
+Tu as maintenant accès aux scans illimités et aux alertes exclusives.
 
 Prépare-toi à encaisser les meilleures value bets détectées par l’IA.
 
@@ -54,8 +61,7 @@ Détection automatique de value bets
 🆓 2 scans gratuits / jour
 💎 Premium = scans illimités
 
-━━━━━━━━━━━━`,
-menu)
+━━━━━━━━━━━━`,menu)
 
 })
 
@@ -63,22 +69,23 @@ menu)
 bot.hears("🔎 Scanner les matchs", async (ctx)=>{
 
 const user = ctx.from.id
+const isPremium = premiumUsers.has(user)
 
 if(!userStats[user]){
 userStats[user] = 0
 }
 
-if(userStats[user] >= MAX_FREE_SCANS){
-
+if(!isPremium && userStats[user] >= MAX_FREE_SCANS){
 return ctx.reply("⚠️ Limite gratuite atteinte (2 scans/jour). Passe Premium pour scans illimités.")
-
 }
 
 try{
 
+let found = false
+
 for(const league of LEAGUES){
 
-const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal`
+const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
 
 const res = await axios.get(url)
 
@@ -88,53 +95,53 @@ if(!matches || matches.length === 0) continue
 
 for(const match of matches){
 
+if(!match.bookmakers) continue
+
 const home = match.home_team
 const away = match.away_team
 
 for(const bookmaker of match.bookmakers){
 
+if(!bookmaker.markets) continue
+
 for(const market of bookmaker.markets){
+
+if(!market.outcomes) continue
 
 for(const outcome of market.outcomes){
 
 const odds = outcome.price
 const pick = outcome.name
 
-if(!odds || odds < 1.5) continue
+if(!odds || odds < 1.30 || odds > 3) continue
 
-// PROBABILITÉ BOOKMAKER
 const bookProb = 1 / odds
 
-// AJUSTEMENT IA
 let aiProb = bookProb
 
-if(odds >= 3){
-aiProb *= 1.30
-}
+if(odds >= 3) aiProb *= 1.30
+else if(odds >= 2) aiProb *= 1.20
 
-if(odds >= 2 && odds < 3){
-aiProb *= 1.20
-}
+if(aiProb > 0.82) aiProb = 0.82
 
-if(aiProb > 0.82){
-aiProb = 0.82
-}
-
-// EDGE
 const edge = (aiProb * odds) - 1
 
 if(aiProb > 0.62 && edge > 0.18){
 
-userStats[user]++
+found = true
 
-return ctx.reply(`🔥 VALUE BET IA
+if(!isPremium){
+userStats[user]++
+}
+
+ctx.reply(`🔥 VALUE BET IA
 
 🏆 ${home} vs ${away}
 
 🎯 Pick : ${pick}
 
 📊 Probabilité IA : ${(aiProb*100).toFixed(1)}%
-📉 Probabilité Book : ${(bookProb*100).toFixed(1)}%
+📉 Probabilité Book : ${(bookProb*100).toFixed(1)}
 
 💰 Cote : ${odds}
 📈 Edge : ${(edge*100).toFixed(1)}%`)
@@ -151,7 +158,9 @@ return ctx.reply(`🔥 VALUE BET IA
 
 }
 
+if(!found){
 ctx.reply("❌ Aucune value intéressante trouvée.")
+}
 
 }catch(err){
 
@@ -168,12 +177,13 @@ bot.hears("📊 Mes statistiques",(ctx)=>{
 
 const user = ctx.from.id
 const used = userStats[user] || 0
+const premium = premiumUsers.has(user)
 
 ctx.reply(`📊 TES STATISTIQUES
 
 Analyses utilisées : ${used}/2
 
-Statut : 🆓 Gratuit`)
+Statut : ${premium ? "💎 Premium" : "🆓 Gratuit"}`)
 
 })
 
@@ -204,6 +214,78 @@ https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00
 Une fois le paiement effectué, ton accès Premium sera activé.`)
 
 })
+
+
+// NOTIFICATION CONFIANCE MATCH (1 FOIS PAR JOUR)
+
+async function dailySafeBet(){
+
+try{
+
+for(const league of LEAGUES){
+
+const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
+
+const res = await axios.get(url)
+
+const matches = res.data
+
+if(!matches) continue
+
+for(const match of matches){
+
+const home = match.home_team
+const away = match.away_team
+
+for(const bookmaker of match.bookmakers){
+
+for(const market of bookmaker.markets){
+
+for(const outcome of market.outcomes){
+
+const odds = outcome.price
+
+if(odds >= 1.30 && odds <= 1.80){
+
+const message = `✅ CONFIANCE MATCH
+
+🏆 ${home} vs ${away}
+
+🎯 Pick : ${outcome.name}
+
+💰 Cote : ${odds}
+
+📊 Confiance IA : Très élevée`
+
+premiumUsers.forEach(user=>{
+bot.telegram.sendMessage(user,message)
+})
+
+return
+
+}
+
+}
+
+}
+
+}
+
+}
+
+}
+
+}catch(err){
+
+console.log("AUTO BET ERROR",err.message)
+
+}
+
+}
+
+// 1 FOIS PAR JOUR
+setInterval(dailySafeBet, 86400000)
+
 
 // FIX TELEGRAM
 bot.telegram.deleteWebhook()
