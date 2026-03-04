@@ -85,6 +85,19 @@ Détection automatique de value bets
 })
 
 
+// LIGUES ANALYSÉES
+
+const leagues = [
+"soccer_epl",
+"soccer_spain_la_liga",
+"soccer_italy_serie_a",
+"soccer_germany_bundesliga",
+"soccer_france_ligue_one",
+"soccer_uefa_champs_league",
+"soccer_uefa_europa_league"
+]
+
+
 // SCAN MATCHS
 
 bot.hears("🔎 Scanner les matchs", async (ctx)=>{
@@ -100,7 +113,9 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 
 try{
 
-const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
+for(const league of leagues){
+
+const res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
 params:{
 apiKey:process.env.ODDS_API_KEY,
 regions:"eu",
@@ -111,9 +126,7 @@ oddsFormat:"decimal"
 
 const matches = res.data
 
-if(!matches || matches.length === 0){
-return ctx.reply("❌ Aucun match trouvé.")
-}
+if(!matches) continue
 
 for(const match of matches){
 
@@ -166,6 +179,8 @@ return ctx.reply(`🔥 VALUE BET IA
 🧠 Confiance IA : ${confidence}%
 
 ${label}`)
+
+}
 
 }
 
@@ -243,7 +258,9 @@ async function premiumAlert(){
 
 try{
 
-const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
+for(const league of leagues){
+
+const res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
 params:{
 apiKey:process.env.ODDS_API_KEY,
 regions:"eu",
@@ -301,6 +318,8 @@ return
 
 }
 
+}
+
 }catch(err){
 
 console.log("ALERT ERROR:",err.message)
@@ -316,7 +335,7 @@ async function freeWednesday(){
 
 try{
 
-const res = await axios.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds",{
+const res = await axios.get(`https://api.the-odds-api.com/v4/sports/soccer_epl/odds`,{
 params:{
 apiKey:process.env.ODDS_API_KEY,
 regions:"eu",
