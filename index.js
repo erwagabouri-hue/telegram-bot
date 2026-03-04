@@ -10,7 +10,7 @@ const MAX_FREE_SCANS = 2
 const userStats = {}
 const premiumUsers = new Set()
 
-// LIGUES SCANNÉES (VERSION PRO)
+// LIGUES STABLES
 
 const LEAGUES = [
 
@@ -22,17 +22,7 @@ const LEAGUES = [
 
 "soccer_netherlands_eredivisie",
 "soccer_portugal_primeira_liga",
-"soccer_turkey_super_league",
-
-"soccer_belgium_first_div",
-"soccer_denmark_superliga",
-"soccer_sweden_allsvenskan",
-
-"soccer_brazil_campeonato",
-"soccer_argentina_primera",
-
-"soccer_japan_j_league",
-"soccer_australia_aleague"
+"soccer_turkey_super_league"
 
 ]
 
@@ -62,14 +52,13 @@ Ton accès Premium est maintenant activé.
 
 Tu as maintenant accès :
 
-• aux scans illimités
-• aux value bets avancées
-• aux alertes automatiques
+• scans illimités
+• alertes exclusives
+• value bets avancées
 
 Prépare-toi à encaisser les meilleures opportunités détectées par l’IA.`)
 
 return
-
 }
 
 ctx.reply(`🤖 IA VALUE BOT PRO
@@ -100,7 +89,7 @@ if(!isPremium && userStats[user] >= MAX_FREE_SCANS){
 
 return ctx.reply(`⚠️ Limite gratuite atteinte.
 
-Passe Premium pour accéder aux scans illimités et aux alertes exclusives.`)
+Passe Premium pour accéder aux scans illimités.`)
 
 }
 
@@ -110,9 +99,7 @@ let found = false
 
 for(const league of LEAGUES){
 
-// petite pause pour éviter blocage API
-
-await new Promise(r=>setTimeout(r,1500))
+await new Promise(r=>setTimeout(r,2000))
 
 const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal`
 
@@ -120,7 +107,7 @@ const res = await axios.get(url)
 
 const matches = res.data
 
-if(!matches || matches.length === 0) continue
+if(!matches) continue
 
 for(const match of matches){
 
@@ -142,7 +129,7 @@ for(const outcome of market.outcomes){
 const odds = outcome.price
 const pick = outcome.name
 
-if(!odds || odds < 1.30 || odds > 3.5) continue
+if(!odds || odds < 1.30 || odds > 3.2) continue
 
 const bookProb = 1 / odds
 
@@ -229,7 +216,7 @@ bot.hears("🔥 Top Value Bets",(ctx)=>{
 
 ctx.reply(`🔥 TOP VALUE BETS
 
-Les meilleures analyses seront envoyées automatiquement chaque jour aux membres Premium.`)
+Les meilleures analyses sont envoyées automatiquement chaque jour aux membres Premium.`)
 
 })
 
@@ -253,7 +240,7 @@ Une fois le paiement effectué, ton accès Premium sera activé.`)
 })
 
 
-// NOTIFICATION QUOTIDIENNE PREMIUM
+// ALERTE QUOTIDIENNE PREMIUM
 
 async function dailySafeBet(){
 
@@ -261,7 +248,7 @@ try{
 
 for(const league of LEAGUES){
 
-await new Promise(r=>setTimeout(r,1500))
+await new Promise(r=>setTimeout(r,2000))
 
 const url = `https://api.the-odds-api.com/v4/sports/${league}/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
 
