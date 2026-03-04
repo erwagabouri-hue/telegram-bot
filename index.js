@@ -11,17 +11,9 @@ const userStats = {}
 const premiumUsers = new Set()
 const users = new Set()
 
-// 7 LIGUES ANALYSÉES
+// 7 LIGUES
 
-const LEAGUES = [
-39,  // Premier League
-140, // Liga
-135, // Serie A
-78,  // Bundesliga
-61,  // Ligue 1
-94,  // Portugal
-88   // Netherlands
-]
+const LEAGUES = [39,140,135,78,61,94,88]
 
 // MENU
 
@@ -49,11 +41,9 @@ ctx.reply(`👑 Bienvenue dans la Team Gagnante !
 
 Ton accès Premium est activé.
 
-Tu reçois maintenant :
-
-• scans illimités
-• alertes automatiques
-• value bets IA avancées`)
+Scans illimités
+Alertes automatiques
+Value bets IA avancées`)
 
 return
 }
@@ -63,21 +53,17 @@ ctx.reply(`🤖 IA VALUE BOT PRO
 Analyse intelligente des cotes
 Détection automatique de value bets
 
-━━━━━━━━━━━━
-
 🆓 2 scans gratuits / jour
-💎 Premium = scans illimités
-
-━━━━━━━━━━━━`,menu)
+💎 Premium = scans illimités`,menu)
 
 })
 
 
-// RÉCUPÈRE MATCHS API FOOTBALL
+// MATCHS API FOOTBALL
 
 async function getMatches(){
 
-let matches = []
+let allMatches = []
 
 for(const league of LEAGUES){
 
@@ -97,29 +83,38 @@ next:5
 
 if(res.data.response){
 
-matches = matches.concat(res.data.response)
+allMatches = allMatches.concat(res.data.response)
 
 }
 
 }
 
-return matches
+return allMatches
 
 }
 
 
-// RÉCUPÈRE COTES ODDS API
+// COTES ODDS API
 
 async function getOdds(){
 
-const res = await axios.get(`https://api.the-odds-api.com/v4/sports/soccer_epl/odds/?apiKey=${process.env.ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`)
+const res = await axios.get(`https://api.the-odds-api.com/v4/sports/soccer_epl/odds`,{
+
+params:{
+apiKey:process.env.ODDS_API_KEY,
+regions:"eu",
+markets:"h2h",
+oddsFormat:"decimal"
+}
+
+})
 
 return res.data
 
 }
 
 
-// SCAN MATCHS
+// SCAN MATCH
 
 bot.hears("🔎 Scanner les matchs", async (ctx)=>{
 
@@ -146,7 +141,9 @@ const away = match.teams.away.name
 
 for(const oddMatch of odds){
 
-if(oddMatch.home_team === home){
+if(oddMatch.home_team !== home) continue
+
+if(!oddMatch.bookmakers) continue
 
 for(const bookmaker of oddMatch.bookmakers){
 
@@ -154,14 +151,15 @@ for(const market of bookmaker.markets){
 
 for(const outcome of market.outcomes){
 
-const oddsValue = outcome.price
+const odd = outcome.price
 
-if(!oddsValue || oddsValue < 1.30 || oddsValue > 3) continue
+if(!odd) continue
 
-const bookProb = 1 / oddsValue
-let aiProb = bookProb * 1.18
+if(odd < 1.30 || odd > 3) continue
 
-const edge = (aiProb * oddsValue) - 1
+const bookProb = 1 / odd
+const aiProb = bookProb * 1.18
+const edge = (aiProb * odd) - 1
 
 if(edge > 0.12){
 
@@ -175,7 +173,7 @@ return ctx.reply(`🔥 VALUE BET IA
 
 🎯 Pick : ${outcome.name}
 
-💰 Cote : ${oddsValue}
+💰 Cote : ${odd}
 
 📈 Edge : ${(edge*100).toFixed(1)}%`)
 
@@ -195,7 +193,7 @@ ctx.reply("❌ Aucune value intéressante trouvée.")
 
 }catch(err){
 
-console.log("SCAN ERROR",err.message)
+console.log("SCAN ERROR:",err.message)
 
 ctx.reply("❌ Erreur lors du scan.")
 
@@ -251,7 +249,7 @@ Une fois le paiement effectué, ton accès Premium sera activé.`)
 })
 
 
-// ALERTES PREMIUM AUTOMATIQUES
+// ALERTES PREMIUM
 
 async function premiumAlert(){
 
@@ -264,15 +262,17 @@ for(const match of odds){
 const home = match.home_team
 const away = match.away_team
 
+if(!match.bookmakers) continue
+
 for(const bookmaker of match.bookmakers){
 
 for(const market of bookmaker.markets){
 
 for(const outcome of market.outcomes){
 
-const oddsValue = outcome.price
+const odd = outcome.price
 
-if(oddsValue >= 1.30 && oddsValue <= 1.80){
+if(odd >= 1.30 && odd <= 1.80){
 
 const message = `🚨 ALERTE PREMIUM
 
@@ -280,9 +280,9 @@ const message = `🚨 ALERTE PREMIUM
 
 🎯 Pick : ${outcome.name}
 
-💰 Cote : ${oddsValue}
+💰 Cote : ${odd}
 
-📊 Analyse IA : forte confiance`
+Analyse IA : forte confiance`
 
 premiumUsers.forEach(user=>{
 bot.telegram.sendMessage(user,message)
@@ -302,14 +302,14 @@ return
 
 }catch(err){
 
-console.log("ALERT ERROR",err.message)
+console.log("ALERT ERROR:",err.message)
 
 }
 
 }
 
 
-// PRONO GRATUIT MERCREDI
+// PRONO MERCREDI
 
 async function freeWednesday(){
 
@@ -322,15 +322,17 @@ for(const match of odds){
 const home = match.home_team
 const away = match.away_team
 
+if(!match.bookmakers) continue
+
 for(const bookmaker of match.bookmakers){
 
 for(const market of bookmaker.markets){
 
 for(const outcome of market.outcomes){
 
-const oddsValue = outcome.price
+const odd = outcome.price
 
-if(oddsValue >= 1.30 && oddsValue <= 2.50){
+if(odd >= 1.30 && odd <= 2.50){
 
 const message = `🤝 CONFIANCE DU MERCREDI OFFERTE
 
@@ -338,7 +340,7 @@ const message = `🤝 CONFIANCE DU MERCREDI OFFERTE
 
 🎯 Pick : ${outcome.name}
 
-💰 Cote : ${oddsValue}
+💰 Cote : ${odd}
 
 Analyse offerte par IA VALUE BOT`
 
@@ -360,19 +362,19 @@ return
 
 }catch(err){
 
-console.log("FREE ERROR",err.message)
+console.log("FREE ERROR:",err.message)
 
 }
 
 }
 
 
-// ALERTES TOUTES LES 2H
+// ALERTES 2H
 
 setInterval(premiumAlert,7200000)
 
 
-// CHECK MERCREDI 10H
+// MERCREDI 10H
 
 setInterval(()=>{
 
@@ -387,13 +389,10 @@ freeWednesday()
 },60000)
 
 
-// TELEGRAM FIX
+// TELEGRAM
 
 bot.telegram.deleteWebhook()
 
 bot.launch()
 
 console.log("✅ BOT LANCÉ")
-
-process.once("SIGINT",()=>bot.stop("SIGINT"))
-process.once("SIGTERM",()=>bot.stop("SIGTERM"))
