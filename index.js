@@ -101,8 +101,6 @@ const odd = outcome.price
 if(!odd) continue
 if(odd < 1.30 || odd > 3) continue
 
-// CALCUL CONFIANCE IA
-
 let confidence = 0
 let level = ""
 
@@ -158,7 +156,7 @@ ctx.reply("❌ Aucune value intéressante trouvée.")
 
 }catch(err){
 
-console.log("SCAN ERROR:",err.message)
+console.log("SCAN ERROR:", err.message)
 
 ctx.reply("❌ Erreur lors du scan.")
 
@@ -167,7 +165,7 @@ ctx.reply("❌ Erreur lors du scan.")
 })
 
 
-// STATISTIQUES
+// STATS
 
 bot.hears("📊 Mes statistiques",(ctx)=>{
 
@@ -276,7 +274,7 @@ return
 
 }catch(err){
 
-console.log("ALERT ERROR:",err.message)
+console.log("ALERT ERROR:", err.message)
 
 }
 
@@ -345,7 +343,7 @@ return
 
 }catch(err){
 
-console.log("FREE ERROR:",err.message)
+console.log("FREE ERROR:", err.message)
 
 }
 
@@ -357,7 +355,7 @@ console.log("FREE ERROR:",err.message)
 setInterval(premiumAlert,7200000)
 
 
-// MERCREDI 10h10 (France)
+// MERCREDI 10h10 FRANCE
 
 setInterval(()=>{
 
