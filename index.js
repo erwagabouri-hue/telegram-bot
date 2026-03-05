@@ -41,8 +41,8 @@ return true
 // MENU
 
 const menu = Markup.keyboard([
-["🔎 Scanner FOOT"],
-["🎾 Scanner TENNIS"],
+["⚽ Scanner FOOT"],
+["🏀 Scanner BASKET"],
 ["🔥 Top Value Bets"],
 ["📊 Mes statistiques"],
 ["💎 Passer Premium"]
@@ -100,19 +100,20 @@ const footballLeagues = [
 
 ]
 
-// LIGUES TENNIS
+// LIGUES BASKET
 
-const tennisLeagues = [
+const basketLeagues = [
 
-"tennis_atp_singles",
-"tennis_wta_singles"
+"basketball_nba",
+"basketball_euroleague",
+"basketball_ncaab"
 
 ]
 
 
 // SCAN FOOT
 
-bot.hears("🔎 Scanner FOOT", async (ctx)=>{
+bot.hears("⚽ Scanner FOOT", async (ctx)=>{
 
 const user = ctx.from.id
 const premium = isPremium(user)
@@ -180,7 +181,7 @@ if(!premium){
 userStats[user]++
 }
 
-return ctx.reply(`🔥 VALUE BET IA FOOT
+return ctx.reply(`⚽ VALUE BET IA FOOT
 
 🏆 ${home} vs ${away}
 
@@ -217,9 +218,9 @@ ctx.reply("❌ Erreur lors du scan.")
 })
 
 
-// SCAN TENNIS
+// SCAN BASKET
 
-bot.hears("🎾 Scanner TENNIS", async (ctx)=>{
+bot.hears("🏀 Scanner BASKET", async (ctx)=>{
 
 const user = ctx.from.id
 const premium = isPremium(user)
@@ -232,7 +233,7 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 
 try{
 
-for(const league of tennisLeagues){
+for(const league of basketLeagues){
 
 const res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
 params:{
@@ -287,7 +288,7 @@ if(!premium){
 userStats[user]++
 }
 
-return ctx.reply(`🎾 VALUE BET IA TENNIS
+return ctx.reply(`🏀 VALUE BET IA BASKET
 
 🏆 ${home} vs ${away}
 
@@ -331,7 +332,7 @@ bot.hears("💎 Passer Premium",(ctx)=>{
 ctx.reply(`💎 PREMIUM IA VALUE BOT
 
 Accès illimité aux scans
-Value bets IA FOOT + TENNIS
+Value bets IA FOOT + BASKET
 Alertes automatiques exclusives
 Pronostics réservés aux membres
 
