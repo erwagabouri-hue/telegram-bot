@@ -41,7 +41,8 @@ return true
 // MENU
 
 const menu = Markup.keyboard([
-["🔎 Scanner les matchs"],
+["🔎 Scanner FOOT"],
+["🎾 Scanner TENNIS"],
 ["🔥 Top Value Bets"],
 ["📊 Mes statistiques"],
 ["💎 Passer Premium"]
@@ -85,22 +86,29 @@ Détection automatique de value bets
 })
 
 
-// LIGUES ANALYSÉES
+// LIGUES FOOT
 
-const leagues = [
-
+const footballLeagues = [
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
+"soccer_germany_bundesliga",
 "soccer_france_ligue_one",
-"tennis_atp"
+"soccer_uefa_champs_league",
+"soccer_uefa_europa_league"
+]
 
+// LIGUES TENNIS
+
+const tennisLeagues = [
+"tennis_atp",
+"tennis_wta"
 ]
 
 
-// SCAN MATCHS
+// SCAN FOOT
 
-bot.hears("🔎 Scanner les matchs", async (ctx)=>{
+bot.hears("🔎 Scanner FOOT", async (ctx)=>{
 
 const user = ctx.from.id
 const premium = isPremium(user)
@@ -113,12 +121,7 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 
 try{
 
-const footballPicks = []
-const tennisPicks = []
-
-for(const league of leagues){
-
-const isTennis = league.includes("tennis")
+for(const league of footballLeagues){
 
 const res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
 params:{
@@ -169,25 +172,21 @@ else if(confidence >= 60){
 label = "✅ Assez bonne confiance"
 }
 
-const pick = {
-match: `${home} vs ${away}`,
-team: outcome.name,
-odd: odd,
-confidence: confidence,
-label: label
+if(!premium){
+userStats[user]++
 }
 
-if(isTennis){
-tennisPicks.push(pick)
-}else{
-footballPicks.push(pick)
-}
+return ctx.reply(`🔥 VALUE BET IA FOOT
 
-}
+🏆 ${home} vs ${away}
 
-}
+🎯 Pick : ${outcome.name}
 
-}
+💰 Cote : ${odd}
+
+🧠 Confiance IA : ${confidence}%
+
+${label}`)
 
 }
 
@@ -195,45 +194,120 @@ footballPicks.push(pick)
 
 }
 
-let finalPicks = []
-
-if(footballPicks.length >= 2 && tennisPicks.length >= 1){
-
-finalPicks.push(footballPicks[0])
-finalPicks.push(footballPicks[1])
-finalPicks.push(tennisPicks[0])
-
-}else{
-
-finalPicks = footballPicks.slice(0,3)
+}
 
 }
 
-if(finalPicks.length === 0){
-return ctx.reply("❌ Aucune value intéressante trouvée.")
 }
 
-let message = "🔥 TOP 3 VALUE BETS IA\n\n"
+ctx.reply("❌ Aucune value intéressante trouvée.")
 
-finalPicks.forEach((p,index)=>{
+}catch(err){
 
-message += `${index+1}️⃣ ${p.match}
+console.log("SCAN ERROR:",err.message)
 
-🎯 Pick : ${p.team}
-💰 Cote : ${p.odd}
-🧠 Confiance IA : ${p.confidence}%
+ctx.reply("❌ Erreur lors du scan.")
 
-${p.label}
-
-`
+}
 
 })
+
+
+// SCAN TENNIS
+
+bot.hears("🎾 Scanner TENNIS", async (ctx)=>{
+
+const user = ctx.from.id
+const premium = isPremium(user)
+
+if(!userStats[user]) userStats[user] = 0
+
+if(!premium && userStats[user] >= MAX_FREE_SCANS){
+return ctx.reply("⚠️ Limite gratuite atteinte.")
+}
+
+try{
+
+for(const league of tennisLeagues){
+
+const res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
+params:{
+apiKey:process.env.ODDS_API_KEY,
+regions:"eu",
+markets:"h2h",
+oddsFormat:"decimal"
+}
+})
+
+const matches = res.data
+
+if(!matches) continue
+
+for(const match of matches){
+
+const home = match.home_team
+const away = match.away_team
+
+if(!match.bookmakers) continue
+
+for(const bookmaker of match.bookmakers){
+
+for(const market of bookmaker.markets){
+
+for(const outcome of market.outcomes){
+
+const odd = outcome.price
+
+if(!odd) continue
+if(odd < 1.30 || odd > 3) continue
+
+const bookProb = 1 / odd
+const aiProb = bookProb * 1.15
+
+const edge = (aiProb * odd) - 1
+
+if(edge > 0.10){
+
+const confidence = Math.min(100, Math.round(aiProb * 100))
+
+let label = "⚠️ Ça se tente !"
+
+if(confidence >= 75){
+label = "🔥 Confiance maximale"
+}
+else if(confidence >= 60){
+label = "✅ Assez bonne confiance"
+}
 
 if(!premium){
 userStats[user]++
 }
 
-ctx.reply(message)
+return ctx.reply(`🎾 VALUE BET IA TENNIS
+
+🏆 ${home} vs ${away}
+
+🎯 Pick : ${outcome.name}
+
+💰 Cote : ${odd}
+
+🧠 Confiance IA : ${confidence}%
+
+${label}`)
+
+}
+
+}
+
+}
+
+}
+
+}
+
+}
+
+ctx.reply("❌ Aucune value intéressante trouvée.")
 
 }catch(err){
 
@@ -293,196 +367,10 @@ Une fois le paiement effectué, ton accès Premium sera activé.`)
 })
 
 
-// ALERTES PREMIUM
-
-async function premiumAlert(){
-
-try{
-
-for(const league of leagues){
-
-const res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
-params:{
-apiKey:process.env.ODDS_API_KEY,
-regions:"eu",
-markets:"h2h",
-oddsFormat:"decimal"
-}
-})
-
-const matches = res.data
-
-for(const match of matches){
-
-const home = match.home_team
-const away = match.away_team
-
-if(!match.bookmakers) continue
-
-for(const bookmaker of match.bookmakers){
-
-for(const market of bookmaker.markets){
-
-for(const outcome of market.outcomes){
-
-const odd = outcome.price
-
-if(odd >= 1.30 && odd <= 1.80){
-
-const message = `🚨 ALERTE PREMIUM
-
-🏆 ${home} vs ${away}
-
-🎯 Pick : ${outcome.name}
-
-💰 Cote : ${odd}
-
-Analyse IA : forte confiance`
-
-for(const user in db.premiumUsers){
-
-if(isPremium(user)){
-bot.telegram.sendMessage(user,message)
-}
-
-}
-
-return
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}catch(err){
-
-console.log("ALERT ERROR:",err.message)
-
-}
-
-}
-
-
-// PRONO GRATUIT JEUDI
-
-async function freeThursday(){
-
-try{
-
-const res = await axios.get(`https://api.the-odds-api.com/v4/sports/soccer_epl/odds`,{
-params:{
-apiKey:process.env.ODDS_API_KEY,
-regions:"eu",
-markets:"h2h",
-oddsFormat:"decimal"
-}
-})
-
-const matches = res.data
-
-for(const match of matches){
-
-const home = match.home_team
-const away = match.away_team
-
-if(!match.bookmakers) continue
-
-for(const bookmaker of match.bookmakers){
-
-for(const market of bookmaker.markets){
-
-for(const outcome of market.outcomes){
-
-const odd = outcome.price
-
-if(odd >= 1.30 && odd <= 2.50){
-
-const message = `🤝 CONFIANCE DU JEUDI OFFERTE
-
-🏆 ${home} vs ${away}
-
-🎯 Pick : ${outcome.name}
-
-💰 Cote : ${odd}
-
-Analyse offerte par IA VALUE BOT`
-
-users.forEach(user=>{
-bot.telegram.sendMessage(user,message)
-})
-
-return
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}catch(err){
-
-console.log("FREE ERROR:",err.message)
-
-}
-
-}
-
-
-// ALERTES PREMIUM TOUTES LES 2H
-setInterval(premiumAlert,7200000)
-
-
-// JEUDI 9H30 FRANCE
-
-setInterval(()=>{
-
-const now = new Date()
-
-const hour = now.getUTCHours()
-const minute = now.getUTCMinutes()
-
-if(now.getUTCDay() === 4 && hour === 8 && minute >= 30 && minute <= 35){
-freeThursday()
-}
-
-},60000)
-
-
-// RESET DES SCANS À MINUIT
-setInterval(()=>{
-
-const now = new Date()
-
-if(now.getHours() === 0 && now.getMinutes() === 0){
-
-for(const user in userStats){
-userStats[user] = 0
-}
-
-console.log("🔄 Reset scans gratuits (minuit)")
-
-}
-
-},60000)
-
-
 // TELEGRAM
 
 bot.telegram.deleteWebhook()
 
-bot.launch({
-dropPendingUpdates: true
-})
+bot.launch()
 
 console.log("✅ BOT LANCÉ")
