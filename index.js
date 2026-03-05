@@ -43,8 +43,8 @@ return true
 const menu = Markup.keyboard([
 ["⚽ Scanner FOOT"],
 ["🏀 Scanner BASKET"],
-["🔥 Top Value Bets"],
-["📊 Mes statistiques"],
+["👑 Meilleurs cotes IA"],
+["📩 Nous contacter"],
 ["💎 Passer Premium"]
 ]).resize()
 
@@ -80,6 +80,7 @@ ctx.reply(`🤖 IA VALUE BOT PRO
 Analyse intelligente des cotes
 Détection automatique de value bets
 
+🎁 2 scans offerts chaque jour
 🆓 2 scans gratuits / jour
 💎 Premium = scans illimités`,menu)
 
@@ -321,6 +322,44 @@ console.log("SCAN ERROR:",err.message)
 ctx.reply("❌ Erreur lors du scan.")
 
 }
+
+})
+
+
+// MEILLEURS COTES IA
+
+bot.hears("👑 Meilleurs cotes IA",(ctx)=>{
+
+ctx.reply(`👑 MEILLEURS COTES IA
+
+Les meilleures analyses détectées par notre IA
+sont réservées aux membres Premium.
+
+💎 Premium inclut :
+
+⚽ Scans FOOT illimités
+🏀 Scans BASKET illimités
+🔥 Détection automatique de value bets
+🚨 Alertes exclusives
+
+🚀 Rejoins la team gagnante :
+
+https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
+
+})
+
+
+// CONTACT INSTAGRAM
+
+bot.hears("📩 Nous contacter",(ctx)=>{
+
+ctx.reply(`📩 CONTACT
+
+Une question ou un problème ?
+
+Contacte nous directement sur Instagram :
+
+https://www.instagram.com/la_prediction777?igsh=MXJyNW82ajU3NDM4Yw%3D%3D&utm_source=qr`)
 
 })
 
