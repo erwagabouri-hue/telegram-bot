@@ -98,11 +98,7 @@ const leagues = [
 "soccer_uefa_europa_league",
 
 "tennis_atp",
-"tennis_wta",
-"tennis_atp_australian_open",
-"tennis_atp_french_open",
-"tennis_atp_wimbledon",
-"tennis_atp_us_open"
+"tennis_wta"
 
 ]
 
