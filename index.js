@@ -329,9 +329,9 @@ console.log("ALERT ERROR:",err.message)
 }
 
 
-// PRONO GRATUIT MERCREDI
+// PRONO GRATUIT JEUDI
 
-async function freeWednesday(){
+async function freeThursday(){
 
 try{
 
@@ -363,7 +363,7 @@ const odd = outcome.price
 
 if(odd >= 1.30 && odd <= 2.50){
 
-const message = `🤝 CONFIANCE DU MERCREDI OFFERTE
+const message = `🤝 CONFIANCE DU JEUDI OFFERTE
 
 🏆 ${home} vs ${away}
 
@@ -402,7 +402,8 @@ console.log("FREE ERROR:",err.message)
 setInterval(premiumAlert,7200000)
 
 
-// MERCREDI 10H10 FRANCE
+// JEUDI 9H30 FRANCE (fenêtre sécurité 9h30-9h35)
+
 setInterval(()=>{
 
 const now = new Date()
@@ -410,8 +411,8 @@ const now = new Date()
 const hour = now.getUTCHours()
 const minute = now.getUTCMinutes()
 
-if(now.getUTCDay() === 3 && hour === 9 && minute === 10){
-freeWednesday()
+if(now.getUTCDay() === 4 && hour === 8 && minute >= 30 && minute <= 35){
+freeThursday()
 }
 
 },60000)
