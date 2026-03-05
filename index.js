@@ -478,8 +478,11 @@ console.log("🔄 Reset scans gratuits (minuit)")
 
 
 // TELEGRAM
+
 bot.telegram.deleteWebhook()
 
-bot.launch()
+bot.launch({
+dropPendingUpdates: true
+})
 
 console.log("✅ BOT LANCÉ")
