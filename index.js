@@ -89,6 +89,7 @@ Détection automatique de value bets
 // LIGUES FOOT
 
 const footballLeagues = [
+
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
@@ -96,13 +97,16 @@ const footballLeagues = [
 "soccer_france_ligue_one",
 "soccer_uefa_champs_league",
 "soccer_uefa_europa_league"
+
 ]
 
 // LIGUES TENNIS
 
 const tennisLeagues = [
+
 "tennis_atp",
 "tennis_wta"
+
 ]
 
 
@@ -320,34 +324,6 @@ ctx.reply("❌ Erreur lors du scan.")
 })
 
 
-// STATISTIQUES
-
-bot.hears("📊 Mes statistiques",(ctx)=>{
-
-const user = ctx.from.id
-const used = userStats[user] || 0
-const premium = isPremium(user)
-
-ctx.reply(`📊 TES STATISTIQUES
-
-Analyses utilisées : ${used}/2
-
-Statut : ${premium ? "💎 Premium" : "🆓 Gratuit"}`)
-
-})
-
-
-// TOP VALUE
-
-bot.hears("🔥 Top Value Bets",(ctx)=>{
-
-ctx.reply(`🔥 TOP VALUE BETS
-
-Les meilleures analyses sont envoyées automatiquement aux membres Premium.`)
-
-})
-
-
 // PREMIUM
 
 bot.hears("💎 Passer Premium",(ctx)=>{
@@ -355,22 +331,29 @@ bot.hears("💎 Passer Premium",(ctx)=>{
 ctx.reply(`💎 PREMIUM IA VALUE BOT
 
 Accès illimité aux scans
-Value bets IA avancées
-Alertes automatiques
+Value bets IA FOOT + TENNIS
+Alertes automatiques exclusives
+Pronostics réservés aux membres
 
-Clique ici pour t'abonner :
+🚀 Rejoins la team gagnante :
 
-https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00
-
-Une fois le paiement effectué, ton accès Premium sera activé.`)
+https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 
 })
 
 
 // TELEGRAM
 
-bot.telegram.deleteWebhook()
+async function startBot(){
 
-bot.launch()
+await bot.telegram.deleteWebhook({ drop_pending_updates: true })
+
+bot.launch({
+dropPendingUpdates: true
+})
 
 console.log("✅ BOT LANCÉ")
+
+}
+
+startBot()
