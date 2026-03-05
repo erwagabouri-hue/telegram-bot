@@ -88,13 +88,24 @@ Détection automatique de value bets
 // LIGUES ANALYSÉES
 
 const leagues = [
+
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
 "soccer_germany_bundesliga",
 "soccer_france_ligue_one",
 "soccer_uefa_champs_league",
-"soccer_uefa_europa_league"
+"soccer_uefa_europa_league",
+
+// TENNIS
+
+"tennis_atp",
+"tennis_wta",
+"tennis_atp_australian_open",
+"tennis_atp_french_open",
+"tennis_atp_wimbledon",
+"tennis_atp_us_open"
+
 ]
 
 
@@ -402,7 +413,7 @@ console.log("FREE ERROR:",err.message)
 setInterval(premiumAlert,7200000)
 
 
-// JEUDI 9H30 FRANCE (fenêtre sécurité 9h30-9h35)
+// JEUDI 9H30 FRANCE
 
 setInterval(()=>{
 
@@ -418,7 +429,8 @@ freeThursday()
 },60000)
 
 
-// RESET DES SCANS À MINUIT
+// RESET SCANS MINUIT
+
 setInterval(()=>{
 
 const now = new Date()
@@ -437,6 +449,7 @@ console.log("🔄 Reset scans gratuits (minuit)")
 
 
 // TELEGRAM
+
 bot.telegram.deleteWebhook()
 
 bot.launch()
