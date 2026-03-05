@@ -399,12 +399,10 @@ console.log("FREE ERROR:",err.message)
 
 
 // ALERTES PREMIUM TOUTES LES 2H
-
 setInterval(premiumAlert,7200000)
 
 
 // MERCREDI 10H10 FRANCE
-
 setInterval(()=>{
 
 const now = new Date()
@@ -413,8 +411,24 @@ const hour = now.getUTCHours()
 const minute = now.getUTCMinutes()
 
 if(now.getUTCDay() === 3 && hour === 9 && minute === 10){
-
 freeWednesday()
+}
+
+},60000)
+
+
+// RESET DES SCANS À MINUIT
+setInterval(()=>{
+
+const now = new Date()
+
+if(now.getHours() === 0 && now.getMinutes() === 0){
+
+for(const user in userStats){
+userStats[user] = 0
+}
+
+console.log("🔄 Reset scans gratuits (minuit)")
 
 }
 
@@ -422,7 +436,6 @@ freeWednesday()
 
 
 // TELEGRAM
-
 bot.telegram.deleteWebhook()
 
 bot.launch()
