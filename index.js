@@ -92,13 +92,8 @@ const leagues = [
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
-"soccer_germany_bundesliga",
 "soccer_france_ligue_one",
-"soccer_uefa_champs_league",
-"soccer_uefa_europa_league",
-
-"tennis_atp",
-"tennis_wta"
+"tennis_atp"
 
 ]
 
@@ -186,10 +181,6 @@ if(isTennis){
 tennisPicks.push(pick)
 }else{
 footballPicks.push(pick)
-}
-
-if(footballPicks.length >= 3 && tennisPicks.length >= 1){
-break
 }
 
 }
