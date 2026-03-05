@@ -97,8 +97,6 @@ const leagues = [
 "soccer_uefa_champs_league",
 "soccer_uefa_europa_league",
 
-// TENNIS
-
 "tennis_atp",
 "tennis_wta",
 "tennis_atp_australian_open",
@@ -124,7 +122,12 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 
 try{
 
+const footballPicks = []
+const tennisPicks = []
+
 for(const league of leagues){
+
+const isTennis = league.includes("tennis")
 
 const res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
 params:{
@@ -175,35 +178,75 @@ else if(confidence >= 60){
 label = "✅ Assez bonne confiance"
 }
 
+const pick = {
+match: `${home} vs ${away}`,
+team: outcome.name,
+odd: odd,
+confidence: confidence,
+label: label
+}
+
+if(isTennis){
+tennisPicks.push(pick)
+}else{
+footballPicks.push(pick)
+}
+
+if(footballPicks.length >= 3 && tennisPicks.length >= 1){
+break
+}
+
+}
+
+}
+
+}
+
+}
+
+}
+
+}
+
+let finalPicks = []
+
+if(footballPicks.length >= 2 && tennisPicks.length >= 1){
+
+finalPicks.push(footballPicks[0])
+finalPicks.push(footballPicks[1])
+finalPicks.push(tennisPicks[0])
+
+}else{
+
+finalPicks = footballPicks.slice(0,3)
+
+}
+
+if(finalPicks.length === 0){
+return ctx.reply("❌ Aucune value intéressante trouvée.")
+}
+
+let message = "🔥 TOP 3 VALUE BETS IA\n\n"
+
+finalPicks.forEach((p,index)=>{
+
+message += `${index+1}️⃣ ${p.match}
+
+🎯 Pick : ${p.team}
+💰 Cote : ${p.odd}
+🧠 Confiance IA : ${p.confidence}%
+
+${p.label}
+
+`
+
+})
+
 if(!premium){
 userStats[user]++
 }
 
-return ctx.reply(`🔥 VALUE BET IA
-
-🏆 ${home} vs ${away}
-
-🎯 Pick : ${outcome.name}
-
-💰 Cote : ${odd}
-
-🧠 Confiance IA : ${confidence}%
-
-${label}`)
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-ctx.reply("❌ Aucune value intéressante trouvée.")
+ctx.reply(message)
 
 }catch(err){
 
@@ -429,8 +472,7 @@ freeThursday()
 },60000)
 
 
-// RESET SCANS MINUIT
-
+// RESET DES SCANS À MINUIT
 setInterval(()=>{
 
 const now = new Date()
@@ -449,7 +491,6 @@ console.log("🔄 Reset scans gratuits (minuit)")
 
 
 // TELEGRAM
-
 bot.telegram.deleteWebhook()
 
 bot.launch()
