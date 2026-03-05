@@ -104,8 +104,8 @@ const footballLeagues = [
 
 const tennisLeagues = [
 
-"tennis_atp",
-"tennis_wta"
+"tennis_atp_singles",
+"tennis_wta_singles"
 
 ]
 
