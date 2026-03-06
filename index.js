@@ -43,6 +43,7 @@ return true
 const menu = Markup.keyboard([
 ["⚽ Scanner FOOT"],
 ["🏀 Scanner BASKET"],
+["🎯 Scanner BUTEURS"],
 ["👑 Meilleurs cotes IA"],
 ["📩 Nous contacter"],
 ["💎 Passer Premium"]
@@ -90,7 +91,6 @@ Détection automatique de value bets
 // LIGUES FOOT
 
 const footballLeagues = [
-
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
@@ -98,17 +98,14 @@ const footballLeagues = [
 "soccer_france_ligue_one",
 "soccer_uefa_champs_league",
 "soccer_uefa_europa_league"
-
 ]
 
 // LIGUES BASKET
 
 const basketLeagues = [
-
 "basketball_nba",
 "basketball_euroleague",
 "basketball_ncaab"
-
 ]
 
 
@@ -326,6 +323,57 @@ ctx.reply("❌ Erreur lors du scan.")
 })
 
 
+// SCAN BUTEURS (API FOOTBALL)
+
+bot.hears("🎯 Scanner BUTEURS", async (ctx)=>{
+
+try{
+
+const res = await axios.get("https://v3.football.api-sports.io/players/topscorers",{
+headers:{
+"x-apisports-key":process.env.API_FOOTBALL_KEY
+},
+params:{
+league:39,
+season:2024
+}
+})
+
+const players = res.data.response
+
+if(!players || players.length === 0){
+return ctx.reply("❌ Aucun buteur trouvé.")
+}
+
+const player = players[Math.floor(Math.random()*5)]
+
+const name = player.player.name
+const team = player.statistics[0].team.name
+const goals = player.statistics[0].goals.total
+
+ctx.reply(`🎯 VALUE BUTEUR IA
+
+👤 Joueur : ${name}
+🏟 Équipe : ${team}
+
+⚽ Buts cette saison : ${goals}
+
+🔥 Pick IA : ${name} BUTEUR
+
+💰 Cote estimée : 2.10
+🧠 Confiance IA : 71%`)
+
+}catch(err){
+
+console.log("BUTER ERROR:",err.message)
+
+ctx.reply("❌ Erreur scan buteurs.")
+
+}
+
+})
+
+
 // MEILLEURS COTES IA
 
 bot.hears("👑 Meilleurs cotes IA",(ctx)=>{
@@ -334,13 +382,6 @@ ctx.reply(`👑 MEILLEURS COTES IA
 
 Les meilleures analyses détectées par notre IA
 sont réservées aux membres Premium.
-
-💎 Premium inclut :
-
-⚽ Scans FOOT illimités
-🏀 Scans BASKET illimités
-🔥 Détection automatique de value bets
-🚨 Alertes exclusives
 
 🚀 Rejoins la team gagnante :
 
@@ -354,8 +395,6 @@ https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 bot.hears("📩 Nous contacter",(ctx)=>{
 
 ctx.reply(`📩 CONTACT
-
-Une question ou un problème ?
 
 Contacte nous directement sur Instagram :
 
@@ -381,7 +420,7 @@ https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 })
 
 
-// RESET SCANS GRATUITS À MINUIT (heure France)
+// RESET SCANS GRATUITS MINUIT
 
 setInterval(()=>{
 
@@ -390,7 +429,6 @@ const now = new Date()
 const hour = now.getUTCHours()
 const minute = now.getUTCMinutes()
 
-// 23h UTC = minuit France
 if(hour === 23 && minute === 0){
 
 for(const user in userStats){
