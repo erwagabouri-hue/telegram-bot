@@ -372,7 +372,6 @@ ctx.reply(`💎 PREMIUM IA VALUE BOT
 
 Accès illimité aux scans
 Value bets IA FOOT + BASKET
-Alertes automatiques exclusives
 Pronostics réservés aux membres
 
 🚀 Rejoins la team gagnante :
@@ -380,6 +379,29 @@ Pronostics réservés aux membres
 https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 
 })
+
+
+// RESET SCANS GRATUITS À MINUIT (heure France)
+
+setInterval(()=>{
+
+const now = new Date()
+
+const hour = now.getUTCHours()
+const minute = now.getUTCMinutes()
+
+// 23h UTC = minuit France
+if(hour === 23 && minute === 0){
+
+for(const user in userStats){
+userStats[user] = 0
+}
+
+console.log("🔄 Reset scans gratuits")
+
+}
+
+},60000)
 
 
 // TELEGRAM
@@ -396,67 +418,4 @@ console.log("✅ BOT LANCÉ")
 
 }
 
-startBot()// ALERTE AUTOMATIQUE ERREUR DE COTE
-
-async function alertErreurCote(){
-
-const message = `🚨 ALERTE ERREUR DE COTE IA 🚨
-
-L’IA a détecté une cote irrégulière sur ce match.
-
-🎾 Laura Siegemund vs Petra Marcinko
-📍 Indian Wells
-
-📊 Analyse IA :
-
-Marcinko possède la puissance pour prendre rapidement un set, mais elle reste très irrégulière sur la durée.
-De son côté, Siegemund est une joueuse extrêmement tactique qui casse le rythme avec ses variations, surtout sur les courts lents d’Indian Wells.
-
-Ce type d’opposition — puissance contre expérience et variation — produit souvent des matchs très disputés.
-
-👉 Le scénario le plus logique est donc un match accroché qui se décide en 3 sets.
-
-📉 La cote risque de descendre rapidement
-
-🎯 Pari : 3 sets dans le match
-💰 Cote actuelle : 2.20`
-
-for(const user of users){
-
-try{
-await bot.telegram.sendMessage(user,message)
-}catch(e){}
-
-}
-
-}
-
-// ENVOI AUTOMATIQUE 1 MINUTE APRÈS LE LANCEMENT DU BOT
-
-setTimeout(alertErreurCote,60000)
-// MESSAGE ALERTE ERREUR DE COTE
-
-bot.hears("alert",(ctx)=>{
-
-ctx.reply(`🚨 ALERTE ERREUR DE COTE IA 🚨
-
-L’IA a détecté une cote irrégulière sur ce match.
-
-🎾 Laura Siegemund vs Petra Marcinko
-📍 Indian Wells
-
-📊 Analyse IA :
-
-Marcinko possède la puissance pour prendre rapidement un set, mais elle reste très irrégulière sur la durée.
-De son côté, Siegemund est une joueuse extrêmement tactique qui casse le rythme avec ses variations, surtout sur les courts lents d’Indian Wells.
-
-Ce type d’opposition — puissance contre expérience et variation — produit souvent des matchs très disputés.
-
-👉 Le scénario le plus logique est donc un match accroché qui se décide en 3 sets.
-
-📉 La cote risque de descendre rapidement
-
-🎯 Pari : 3 sets dans le match
-💰 Cote actuelle : 2.20`)
-
-})
+startBot()
