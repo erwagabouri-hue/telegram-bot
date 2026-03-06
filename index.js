@@ -128,6 +128,9 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 
 try{
 
+let bestPick = null
+let bestEdge = 0
+
 for(const league of footballLeagues){
 
 const res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
@@ -163,51 +166,49 @@ if(odd < 1.30 || odd > 3) continue
 
 const bookProb = 1 / odd
 const aiProb = bookProb * 1.15
-
 const edge = (aiProb * odd) - 1
 
-if(edge > 0.10){
+if(edge > bestEdge){
 
-const confidence = Math.min(100, Math.round(aiProb * 100))
+bestEdge = edge
 
-let label = "⚠️ Ça se tente !"
-
-if(confidence >= 75){
-label = "🔥 Confiance maximale"
+bestPick = {
+home,
+away,
+pick: outcome.name,
+odd,
+confidence: Math.min(100, Math.round(aiProb * 100))
 }
-else if(confidence >= 60){
-label = "✅ Assez bonne confiance"
+
+}
+
+}
+
+}
+
+}
+
+}
+
+}
+
+if(!bestPick){
+return ctx.reply("❌ Aucune value intéressante trouvée.")
 }
 
 if(!premium){
 userStats[user]++
 }
 
-return ctx.reply(`⚽ VALUE BET IA FOOT
+ctx.reply(`⚽ MEILLEURE VALUE BET IA
 
-🏆 ${home} vs ${away}
+🏆 ${bestPick.home} vs ${bestPick.away}
 
-🎯 Pick : ${outcome.name}
+🎯 Pick : ${bestPick.pick}
 
-💰 Cote : ${odd}
+💰 Cote : ${bestPick.odd}
 
-🧠 Confiance IA : ${confidence}%
-
-${label}`)
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-ctx.reply("❌ Aucune value intéressante trouvée.")
+🧠 Confiance IA : ${bestPick.confidence}%`)
 
 }catch(err){
 
@@ -234,6 +235,9 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 }
 
 try{
+
+let bestPick = null
+let bestEdge = 0
 
 for(const league of basketLeagues){
 
@@ -270,51 +274,49 @@ if(odd < 1.30 || odd > 3) continue
 
 const bookProb = 1 / odd
 const aiProb = bookProb * 1.15
-
 const edge = (aiProb * odd) - 1
 
-if(edge > 0.10){
+if(edge > bestEdge){
 
-const confidence = Math.min(100, Math.round(aiProb * 100))
+bestEdge = edge
 
-let label = "⚠️ Ça se tente !"
-
-if(confidence >= 75){
-label = "🔥 Confiance maximale"
+bestPick = {
+home,
+away,
+pick: outcome.name,
+odd,
+confidence: Math.min(100, Math.round(aiProb * 100))
 }
-else if(confidence >= 60){
-label = "✅ Assez bonne confiance"
+
+}
+
+}
+
+}
+
+}
+
+}
+
+}
+
+if(!bestPick){
+return ctx.reply("❌ Aucune value intéressante trouvée.")
 }
 
 if(!premium){
 userStats[user]++
 }
 
-return ctx.reply(`🏀 VALUE BET IA BASKET
+ctx.reply(`🏀 MEILLEURE VALUE BET IA
 
-🏆 ${home} vs ${away}
+🏆 ${bestPick.home} vs ${bestPick.away}
 
-🎯 Pick : ${outcome.name}
+🎯 Pick : ${bestPick.pick}
 
-💰 Cote : ${odd}
+💰 Cote : ${bestPick.odd}
 
-🧠 Confiance IA : ${confidence}%
-
-${label}`)
-
-}
-
-}
-
-}
-
-}
-
-}
-
-}
-
-ctx.reply("❌ Aucune value intéressante trouvée.")
+🧠 Confiance IA : ${bestPick.confidence}%`)
 
 }catch(err){
 
