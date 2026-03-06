@@ -97,7 +97,7 @@ const footballLeagues = [
 "soccer_italy_serie_a",
 "soccer_germany_bundesliga",
 "soccer_france_ligue_one",
-"soccer_uefa_champs_league",
+"soccer_uefa_champions_league",
 "soccer_uefa_europa_league"
 
 ]
@@ -148,6 +148,13 @@ if(!matches) continue
 
 for(const match of matches){
 
+// FILTRE MATCH DU JOUR
+
+const matchDate = new Date(match.commence_time)
+const today = new Date()
+
+if(matchDate.getDate() !== today.getDate()) continue
+
 const home = match.home_team
 const away = match.away_team
 
@@ -193,14 +200,14 @@ confidence: Math.min(100, Math.round(aiProb * 100))
 }
 
 if(!bestPick){
-return ctx.reply("❌ Aucune value intéressante trouvée.")
+return ctx.reply("❌ Aucun match intéressant aujourd’hui.")
 }
 
 if(!premium){
 userStats[user]++
 }
 
-ctx.reply(`⚽ MEILLEURE VALUE BET IA
+ctx.reply(`⚽ VALUE BET IA FOOT
 
 🏆 ${bestPick.home} vs ${bestPick.away}
 
@@ -308,7 +315,7 @@ if(!premium){
 userStats[user]++
 }
 
-ctx.reply(`🏀 MEILLEURE VALUE BET IA
+ctx.reply(`🏀 VALUE BET IA BASKET
 
 🏆 ${bestPick.home} vs ${bestPick.away}
 
