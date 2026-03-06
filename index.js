@@ -91,6 +91,7 @@ Détection automatique de value bets
 // LIGUES FOOT
 
 const footballLeagues = [
+
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
@@ -98,14 +99,17 @@ const footballLeagues = [
 "soccer_france_ligue_one",
 "soccer_uefa_champs_league",
 "soccer_uefa_europa_league"
+
 ]
 
 // LIGUES BASKET
 
 const basketLeagues = [
+
 "basketball_nba",
 "basketball_euroleague",
 "basketball_ncaab"
+
 ]
 
 
@@ -323,7 +327,7 @@ ctx.reply("❌ Erreur lors du scan.")
 })
 
 
-// SCAN BUTEURS (API FOOTBALL)
+// SCAN BUTEURS
 
 bot.hears("🎯 Scanner BUTEURS", async (ctx)=>{
 
@@ -390,7 +394,7 @@ https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 })
 
 
-// CONTACT INSTAGRAM
+// CONTACT
 
 bot.hears("📩 Nous contacter",(ctx)=>{
 
@@ -398,7 +402,7 @@ ctx.reply(`📩 CONTACT
 
 Contacte nous directement sur Instagram :
 
-https://www.instagram.com/la_prediction777?igsh=MXJyNW82ajU3NDM4Yw%3D%3D&utm_source=qr`)
+https://www.instagram.com/la_prediction777`)
 
 })
 
@@ -420,7 +424,7 @@ https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 })
 
 
-// RESET SCANS GRATUITS MINUIT
+// RESET SCANS GRATUITS
 
 setInterval(()=>{
 
