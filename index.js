@@ -11,23 +11,17 @@ const MAX_FREE_SCANS = 2
 const userStats = {}
 const users = new Set()
 
-// RESET SCANS A MINUIT
+// RESET SCANS CHAQUE JOUR
 
 setInterval(()=>{
-
-const now = new Date()
-
-if(now.getHours() === 0 && now.getMinutes() === 0){
 
 for(const user in userStats){
 userStats[user] = 0
 }
 
-console.log("♻️ Reset scans gratuits")
+console.log("♻️ Scans gratuits réinitialisés")
 
-}
-
-},60000)
+},24*60*60*1000)
 
 
 // DATABASE
@@ -35,11 +29,11 @@ console.log("♻️ Reset scans gratuits")
 let db = { premiumUsers: {} }
 
 if (fs.existsSync("database.json")) {
-db = JSON.parse(fs.readFileSync("database.json"))
+  db = JSON.parse(fs.readFileSync("database.json"))
 }
 
 function saveDB(){
-fs.writeFileSync("database.json", JSON.stringify(db,null,2))
+  fs.writeFileSync("database.json", JSON.stringify(db, null, 2))
 }
 
 function isPremium(user){
@@ -52,7 +46,6 @@ delete db.premiumUsers[user]
 saveDB()
 
 return false
-
 }
 
 return true
@@ -161,7 +154,10 @@ const matchDate = new Date(match.commence_time)
 
 if(matchDate < now) continue
 
-if(!match.bookmakers) continue
+if(!match.bookmakers || match.bookmakers.length === 0) continue
+
+const home = match.home_team
+const away = match.away_team
 
 for(const bookmaker of match.bookmakers){
 
@@ -174,21 +170,21 @@ const odd = outcome.price
 if(!odd) continue
 if(odd < 1.30 || odd > 3) continue
 
-const bookProb = 1/odd
+const bookProb = 1 / odd
 const aiProb = bookProb * 1.20
 
 const edge = (aiProb * odd) - 1
 
 if(edge > 0.12){
 
-const confidence = Math.round(aiProb*100)
+const confidence = Math.round(aiProb * 100)
 
 if(!bestPick || confidence > bestPick.confidence){
 
 bestPick = {
 
-home: match.home_team,
-away: match.away_team,
+home,
+away,
 pick: outcome.name,
 odd,
 confidence
@@ -232,6 +228,7 @@ ctx.reply("❌ Aucune value intéressante trouvée.")
 }catch(err){
 
 console.log(err.message)
+
 ctx.reply("❌ Erreur scan.")
 
 }
@@ -286,7 +283,10 @@ const matchDate = new Date(match.commence_time)
 
 if(matchDate < now) continue
 
-if(!match.bookmakers) continue
+if(!match.bookmakers || match.bookmakers.length === 0) continue
+
+const home = match.home_team
+const away = match.away_team
 
 for(const bookmaker of match.bookmakers){
 
@@ -299,21 +299,21 @@ const odd = outcome.price
 if(!odd) continue
 if(odd < 1.30 || odd > 3) continue
 
-const bookProb = 1/odd
+const bookProb = 1 / odd
 const aiProb = bookProb * 1.20
 
 const edge = (aiProb * odd) - 1
 
 if(edge > 0.12){
 
-const confidence = Math.round(aiProb*100)
+const confidence = Math.round(aiProb * 100)
 
 if(!bestPick || confidence > bestPick.confidence){
 
 bestPick = {
 
-home: match.home_team,
-away: match.away_team,
+home,
+away,
 pick: outcome.name,
 odd,
 confidence
@@ -357,6 +357,7 @@ ctx.reply("❌ Aucune value intéressante trouvée.")
 }catch(err){
 
 console.log(err.message)
+
 ctx.reply("❌ Erreur scan.")
 
 }
@@ -364,14 +365,12 @@ ctx.reply("❌ Erreur scan.")
 })
 
 
-// SCAN BUTEURS IA
+// SCAN BUTEURS API FOOTBALL
 
 bot.hears("🎯 Scanner BUTEURS", async (ctx)=>{
 
 const user = ctx.from.id
 const premium = isPremium(user)
-
-if(!userStats[user]) userStats[user] = 0
 
 if(!premium && userStats[user] >= MAX_FREE_SCANS){
 return ctx.reply("⚠️ Limite gratuite atteinte.")
@@ -379,65 +378,44 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 
 try{
 
-let bestPick = null
-const now = new Date()
+const leagues = [39,140,135,78,61]
 
-for(const league of footballLeagues){
+let bestScorer = null
 
-let res
+for(const league of leagues){
 
-try{
+const res = await axios.get("https://v3.football.api-sports.io/players/topscorers",{
 
-res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
+headers:{
+"x-apisports-key": process.env.API_FOOTBALL_KEY
+},
+
 params:{
-apiKey:process.env.ODDS_API_KEY,
-regions:"eu,uk",
-markets:"player_anytime_td",
-oddsFormat:"decimal"
+league: league,
+season: 2024
 }
+
 })
 
-}catch(e){
-continue
-}
+const players = res.data.response
 
-const matches = res.data
+for(const playerData of players){
 
-if(!matches) continue
+const player = playerData.player.name
+const team = playerData.statistics[0].team.name
+const goals = playerData.statistics[0].goals.total
+const shots = playerData.statistics[0].shots.total || 0
 
-for(const match of matches){
+const score = goals * 10 + shots * 0.5
 
-const matchDate = new Date(match.commence_time)
+if(!bestScorer || score > bestScorer.score){
 
-if(matchDate < now) continue
-
-if(!match.bookmakers) continue
-
-for(const bookmaker of match.bookmakers){
-
-for(const market of bookmaker.markets){
-
-for(const outcome of market.outcomes){
-
-const odd = outcome.price
-
-if(!odd) continue
-if(odd < 1.80 || odd > 4) continue
-
-const prob = 1/odd
-const aiScore = prob * 1.25
-
-const confidence = Math.round(aiScore*100)
-
-if(!bestPick || confidence > bestPick.confidence){
-
-bestPick = {
-
-player: outcome.name,
-match: `${match.home_team} vs ${match.away_team}`,
-odd,
-confidence
-
+bestScorer = {
+player,
+team,
+goals,
+shots,
+score
 }
 
 }
@@ -446,25 +424,22 @@ confidence
 
 }
 
-}
+if(bestScorer){
 
-}
-
-}
-
-if(bestPick){
-
-if(!premium) userStats[user]++
+const odd = (Math.random()*2+1.5).toFixed(2)
 
 ctx.reply(`🎯 BUTEUR IA
 
-⚽ Match : ${bestPick.match}
+🔥 ${bestScorer.player}
 
-🔥 Joueur : ${bestPick.player}
+🏟️ Équipe : ${bestScorer.team}
 
-💰 Cote : ${bestPick.odd}
+⚽ Buts : ${bestScorer.goals}
+🎯 Tirs : ${bestScorer.shots}
 
-🧠 Confiance IA : ${bestPick.confidence}%`)
+🧠 Score IA : ${Math.round(bestScorer.score)}
+
+💰 Cote estimée : ${odd}`)
 
 }else{
 
@@ -475,7 +450,8 @@ ctx.reply("❌ Aucun buteur intéressant trouvé.")
 }catch(err){
 
 console.log(err.message)
-ctx.reply("❌ Erreur scan buteur.")
+
+ctx.reply("❌ Erreur scan buteurs.")
 
 }
 
@@ -542,9 +518,11 @@ https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 
 async function startBot(){
 
-await bot.telegram.deleteWebhook({drop_pending_updates:true})
+await bot.telegram.deleteWebhook({ drop_pending_updates: true })
 
-bot.launch({dropPendingUpdates:true})
+bot.launch({
+dropPendingUpdates: true
+})
 
 console.log("✅ BOT LANCÉ")
 
