@@ -85,6 +85,7 @@ Détection automatique de value bets
 // LIGUES FOOT
 
 const footballLeagues = [
+
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
@@ -92,14 +93,17 @@ const footballLeagues = [
 "soccer_france_ligue_one",
 "soccer_uefa_champions_league",
 "soccer_uefa_europa_league"
+
 ]
 
 // LIGUES BASKET
 
 const basketLeagues = [
+
 "basketball_nba",
 "basketball_euroleague",
 "basketball_ncaab"
+
 ]
 
 
@@ -189,9 +193,10 @@ if(bestOdd < 1.50 || bestOdd > 4) continue
 
 const bookProb = 1 / bestOdd
 const aiProb = bookProb * 1.07
+
 const edge = (aiProb * bestOdd) - 1
 
-if(edge > 0.05){
+if(edge > 0.02){
 
 const confidence = Math.round(aiProb * 100)
 
@@ -310,9 +315,10 @@ if(bestOdd < 1.50 || bestOdd > 4) continue
 
 const bookProb = 1 / bestOdd
 const aiProb = bookProb * 1.07
+
 const edge = (aiProb * bestOdd) - 1
 
-if(edge > 0.05){
+if(edge > 0.02){
 
 const confidence = Math.round(aiProb * 100)
 
@@ -498,7 +504,9 @@ async function startBot(){
 
 await bot.telegram.deleteWebhook({ drop_pending_updates: true })
 
-bot.launch({ dropPendingUpdates: true })
+bot.launch({
+dropPendingUpdates: true
+})
 
 console.log("✅ BOT LANCÉ")
 
