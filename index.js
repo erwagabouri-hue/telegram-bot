@@ -85,7 +85,6 @@ Détection automatique de value bets
 // LIGUES FOOT
 
 const footballLeagues = [
-
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
@@ -93,18 +92,30 @@ const footballLeagues = [
 "soccer_france_ligue_one",
 "soccer_uefa_champions_league",
 "soccer_uefa_europa_league"
-
 ]
 
 // LIGUES BASKET
 
 const basketLeagues = [
-
 "basketball_nba",
 "basketball_euroleague",
 "basketball_ncaab"
-
 ]
+
+
+// FILTRE MATCHS AUJOURD'HUI
+
+function isTodayMatch(date){
+
+const today = new Date()
+today.setHours(0,0,0,0)
+
+const tomorrow = new Date()
+tomorrow.setHours(24,0,0,0)
+
+return date >= today && date <= tomorrow
+
+}
 
 
 // SCAN FOOT
@@ -123,7 +134,6 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 try{
 
 let bestPick = null
-const now = new Date()
 
 for(const league of footballLeagues){
 
@@ -152,49 +162,47 @@ for(const match of matches){
 
 const matchDate = new Date(match.commence_time)
 
-if(matchDate < now) continue
+if(!isTodayMatch(matchDate)) continue
 
 if(!match.bookmakers || match.bookmakers.length === 0) continue
 
 const home = match.home_team
 const away = match.away_team
 
+let bestOdd = 0
+let bestPickName = ""
+
 for(const bookmaker of match.bookmakers){
-
 for(const market of bookmaker.markets){
-
 for(const outcome of market.outcomes){
 
-const odd = outcome.price
+if(outcome.price > bestOdd){
+bestOdd = outcome.price
+bestPickName = outcome.name
+}
 
-if(!odd) continue
-if(odd < 1.30 || odd > 3) continue
+}
+}
+}
 
-const bookProb = 1 / odd
-const aiProb = bookProb * 1.20
+if(bestOdd < 1.50 || bestOdd > 4) continue
 
-const edge = (aiProb * odd) - 1
+const bookProb = 1 / bestOdd
+const aiProb = bookProb * 1.07
+const edge = (aiProb * bestOdd) - 1
 
-if(edge > 0.12){
+if(edge > 0.05){
 
 const confidence = Math.round(aiProb * 100)
 
 if(!bestPick || confidence > bestPick.confidence){
 
 bestPick = {
-
 home,
 away,
-pick: outcome.name,
-odd,
+pick: bestPickName,
+odd: bestOdd,
 confidence
-
-}
-
-}
-
-}
-
 }
 
 }
@@ -252,7 +260,6 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 try{
 
 let bestPick = null
-const now = new Date()
 
 for(const league of basketLeagues){
 
@@ -275,55 +282,48 @@ continue
 
 const matches = res.data
 
-if(!matches) continue
-
 for(const match of matches){
 
 const matchDate = new Date(match.commence_time)
 
-if(matchDate < now) continue
+if(!isTodayMatch(matchDate)) continue
 
-if(!match.bookmakers || match.bookmakers.length === 0) continue
+if(!match.bookmakers) continue
 
-const home = match.home_team
-const away = match.away_team
+let bestOdd = 0
+let bestPickName = ""
 
 for(const bookmaker of match.bookmakers){
-
 for(const market of bookmaker.markets){
-
 for(const outcome of market.outcomes){
 
-const odd = outcome.price
+if(outcome.price > bestOdd){
+bestOdd = outcome.price
+bestPickName = outcome.name
+}
 
-if(!odd) continue
-if(odd < 1.30 || odd > 3) continue
+}
+}
+}
 
-const bookProb = 1 / odd
-const aiProb = bookProb * 1.20
+if(bestOdd < 1.50 || bestOdd > 4) continue
 
-const edge = (aiProb * odd) - 1
+const bookProb = 1 / bestOdd
+const aiProb = bookProb * 1.07
+const edge = (aiProb * bestOdd) - 1
 
-if(edge > 0.12){
+if(edge > 0.05){
 
 const confidence = Math.round(aiProb * 100)
 
 if(!bestPick || confidence > bestPick.confidence){
 
 bestPick = {
-
-home,
-away,
-pick: outcome.name,
-odd,
+home: match.home_team,
+away: match.away_team,
+pick: bestPickName,
+odd: bestOdd,
 confidence
-
-}
-
-}
-
-}
-
 }
 
 }
@@ -365,12 +365,14 @@ ctx.reply("❌ Erreur scan.")
 })
 
 
-// SCAN BUTEURS API FOOTBALL
+// SCAN BUTEURS
 
 bot.hears("🎯 Scanner BUTEURS", async (ctx)=>{
 
 const user = ctx.from.id
 const premium = isPremium(user)
+
+if(!userStats[user]) userStats[user] = 0
 
 if(!premium && userStats[user] >= MAX_FREE_SCANS){
 return ctx.reply("⚠️ Limite gratuite atteinte.")
@@ -384,27 +386,29 @@ let bestScorer = null
 
 for(const league of leagues){
 
-const res = await axios.get("https://v3.football.api-sports.io/players/topscorers",{
+let res
 
-headers:{
-"x-apisports-key": process.env.API_FOOTBALL_KEY
-},
+try{
 
-params:{
-league: league,
-season: 2024
-}
-
+res = await axios.get("https://v3.football.api-sports.io/players/topscorers",{
+headers:{ "x-apisports-key": process.env.API_FOOTBALL_KEY },
+params:{ league: league, season: 2024 }
 })
+
+}catch(e){
+continue
+}
 
 const players = res.data.response
 
-for(const playerData of players){
+if(!players) continue
 
-const player = playerData.player.name
-const team = playerData.statistics[0].team.name
-const goals = playerData.statistics[0].goals.total
-const shots = playerData.statistics[0].shots.total || 0
+for(const p of players){
+
+const player = p.player.name
+const team = p.statistics[0].team.name
+const goals = p.statistics[0].goals.total || 0
+const shots = p.statistics[0].shots.total || 0
 
 const score = goals * 10 + shots * 0.5
 
@@ -425,6 +429,8 @@ score
 }
 
 if(bestScorer){
+
+if(!premium) userStats[user]++
 
 const odd = (Math.random()*2+1.5).toFixed(2)
 
@@ -458,36 +464,11 @@ ctx.reply("❌ Erreur scan buteurs.")
 })
 
 
-// MEILLEURS COTES
-
-bot.hears("👑 Meilleurs cotes IA",(ctx)=>{
-
-ctx.reply(`👑 MEILLEURES COTES IA
-
-Les meilleures analyses détectées par notre IA
-sont réservées aux membres Premium.
-
-💎 Premium inclut :
-
-⚽ scans FOOT illimités
-🏀 scans BASKET illimités
-🎯 scanner BUTEURS IA
-🔥 value bets avancées
-
-🚀 Rejoins la team gagnante :
-
-https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
-
-})
-
-
 // CONTACT
 
 bot.hears("📩 Nous contacter",(ctx)=>{
 
 ctx.reply(`📩 CONTACT
-
-Une question ?
 
 Instagram :
 
@@ -505,9 +486,6 @@ ctx.reply(`💎 PREMIUM IA VALUE BOT
 Accès illimité aux scans
 Value bets IA FOOT + BASKET
 Scanner BUTEURS IA
-Pronostics réservés aux membres
-
-🚀 Rejoins la team gagnante :
 
 https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 
@@ -520,9 +498,7 @@ async function startBot(){
 
 await bot.telegram.deleteWebhook({ drop_pending_updates: true })
 
-bot.launch({
-dropPendingUpdates: true
-})
+bot.launch({ dropPendingUpdates: true })
 
 console.log("✅ BOT LANCÉ")
 
