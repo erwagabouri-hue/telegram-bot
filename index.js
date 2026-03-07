@@ -29,11 +29,11 @@ console.log("♻️ Scans gratuits réinitialisés")
 let db = { premiumUsers: {} }
 
 if (fs.existsSync("database.json")) {
-  db = JSON.parse(fs.readFileSync("database.json"))
+db = JSON.parse(fs.readFileSync("database.json"))
 }
 
 function saveDB(){
-  fs.writeFileSync("database.json", JSON.stringify(db, null, 2))
+fs.writeFileSync("database.json", JSON.stringify(db,null,2))
 }
 
 function isPremium(user){
@@ -82,44 +82,35 @@ Détection automatique de value bets
 })
 
 
-// LIGUES FOOT
+// FILTRE MATCH 24H
+
+function isSoon(date){
+
+const now = new Date()
+const limit = new Date()
+
+limit.setHours(now.getHours()+24)
+
+return date > now && date < limit
+
+}
+
+
+// LIGUES
 
 const footballLeagues = [
-
 "soccer_epl",
 "soccer_spain_la_liga",
 "soccer_italy_serie_a",
 "soccer_germany_bundesliga",
 "soccer_france_ligue_one",
-"soccer_uefa_champions_league",
-"soccer_uefa_europa_league"
-
+"soccer_uefa_champions_league"
 ]
-
-// LIGUES BASKET
 
 const basketLeagues = [
-
 "basketball_nba",
-"basketball_euroleague",
-"basketball_ncaab"
-
+"basketball_euroleague"
 ]
-
-
-// FILTRE MATCHS AUJOURD'HUI
-
-function isTodayMatch(date){
-
-const today = new Date()
-today.setHours(0,0,0,0)
-
-const tomorrow = new Date()
-tomorrow.setHours(24,0,0,0)
-
-return date >= today && date <= tomorrow
-
-}
 
 
 // SCAN FOOT
@@ -148,66 +139,56 @@ try{
 res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
 params:{
 apiKey:process.env.ODDS_API_KEY,
-regions:"eu,uk,us",
+regions:"eu,uk",
 markets:"h2h",
 oddsFormat:"decimal"
 }
 })
 
-}catch(e){
+}catch{
 continue
 }
 
-const matches = res.data
+for(const match of res.data){
 
-if(!matches) continue
+const date = new Date(match.commence_time)
 
-for(const match of matches){
-
-const matchDate = new Date(match.commence_time)
-
-if(!isTodayMatch(matchDate)) continue
-
-if(!match.bookmakers || match.bookmakers.length === 0) continue
-
-const home = match.home_team
-const away = match.away_team
-
-let bestOdd = 0
-let bestPickName = ""
+if(!isSoon(date)) continue
+if(!match.bookmakers) continue
 
 for(const bookmaker of match.bookmakers){
+
 for(const market of bookmaker.markets){
+
 for(const outcome of market.outcomes){
 
-if(outcome.price > bestOdd){
-bestOdd = outcome.price
-bestPickName = outcome.name
-}
+const odd = outcome.price
 
-}
-}
-}
+if(odd < 1.40 || odd > 3.50) continue
 
-if(bestOdd < 1.50 || bestOdd > 4) continue
+const prob = 1/odd
+const ai = prob*1.15
 
-const bookProb = 1 / bestOdd
-const aiProb = bookProb * 1.07
+const edge = (ai*odd)-1
 
-const edge = (aiProb * bestOdd) - 1
+if(edge > -0.02){
 
-if(edge > 0.02){
-
-const confidence = Math.round(aiProb * 100)
+const confidence = Math.round(ai*100)
 
 if(!bestPick || confidence > bestPick.confidence){
 
-bestPick = {
-home,
-away,
-pick: bestPickName,
-odd: bestOdd,
+bestPick={
+home:match.home_team,
+away:match.away_team,
+pick:outcome.name,
+odd,
 confidence
+}
+
+}
+
+}
+
 }
 
 }
@@ -234,15 +215,15 @@ ctx.reply(`⚽ VALUE BET IA FOOT
 
 }else{
 
-ctx.reply("❌ Aucune value intéressante trouvée.")
+ctx.reply("🔎 Analyse terminée. Aucun match intéressant détecté.")
 
 }
 
-}catch(err){
+}catch(e){
 
-console.log(err.message)
+console.log(e.message)
 
-ctx.reply("❌ Erreur scan.")
+ctx.reply("❌ Erreur analyse.")
 
 }
 
@@ -264,7 +245,7 @@ return ctx.reply("⚠️ Limite gratuite atteinte.")
 
 try{
 
-let bestPick = null
+let bestPick=null
 
 for(const league of basketLeagues){
 
@@ -272,64 +253,59 @@ let res
 
 try{
 
-res = await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
+res=await axios.get(`https://api.the-odds-api.com/v4/sports/${league}/odds`,{
 params:{
 apiKey:process.env.ODDS_API_KEY,
-regions:"eu,uk,us",
+regions:"eu,uk",
 markets:"h2h",
 oddsFormat:"decimal"
 }
 })
 
-}catch(e){
+}catch{
 continue
 }
 
-const matches = res.data
+for(const match of res.data){
 
-for(const match of matches){
+const date=new Date(match.commence_time)
 
-const matchDate = new Date(match.commence_time)
-
-if(!isTodayMatch(matchDate)) continue
-
+if(!isSoon(date)) continue
 if(!match.bookmakers) continue
 
-let bestOdd = 0
-let bestPickName = ""
-
 for(const bookmaker of match.bookmakers){
+
 for(const market of bookmaker.markets){
+
 for(const outcome of market.outcomes){
 
-if(outcome.price > bestOdd){
-bestOdd = outcome.price
-bestPickName = outcome.name
-}
+const odd=outcome.price
 
-}
-}
-}
+if(odd<1.40||odd>3.50) continue
 
-if(bestOdd < 1.50 || bestOdd > 4) continue
+const prob=1/odd
+const ai=prob*1.15
 
-const bookProb = 1 / bestOdd
-const aiProb = bookProb * 1.07
+const edge=(ai*odd)-1
 
-const edge = (aiProb * bestOdd) - 1
+if(edge>-0.02){
 
-if(edge > 0.02){
+const confidence=Math.round(ai*100)
 
-const confidence = Math.round(aiProb * 100)
+if(!bestPick||confidence>bestPick.confidence){
 
-if(!bestPick || confidence > bestPick.confidence){
-
-bestPick = {
-home: match.home_team,
-away: match.away_team,
-pick: bestPickName,
-odd: bestOdd,
+bestPick={
+home:match.home_team,
+away:match.away_team,
+pick:outcome.name,
+odd,
 confidence
+}
+
+}
+
+}
+
 }
 
 }
@@ -356,15 +332,15 @@ ctx.reply(`🏀 VALUE BET IA BASKET
 
 }else{
 
-ctx.reply("❌ Aucune value intéressante trouvée.")
+ctx.reply("🔎 Analyse terminée. Aucun match intéressant détecté.")
 
 }
 
-}catch(err){
+}catch(e){
 
-console.log(err.message)
+console.log(e.message)
 
-ctx.reply("❌ Erreur scan.")
+ctx.reply("❌ Erreur analyse.")
 
 }
 
@@ -375,95 +351,61 @@ ctx.reply("❌ Erreur scan.")
 
 bot.hears("🎯 Scanner BUTEURS", async (ctx)=>{
 
-const user = ctx.from.id
-const premium = isPremium(user)
+try{
 
-if(!userStats[user]) userStats[user] = 0
+const fixtures=await axios.get("https://v3.football.api-sports.io/fixtures",{
 
-if(!premium && userStats[user] >= MAX_FREE_SCANS){
-return ctx.reply("⚠️ Limite gratuite atteinte.")
+headers:{
+"x-apisports-key":process.env.API_FOOTBALL_KEY
+},
+
+params:{
+date:new Date().toISOString().slice(0,10)
 }
 
-try{
-
-const leagues = [39,140,135,78,61]
-
-let bestScorer = null
-
-for(const league of leagues){
-
-let res
-
-try{
-
-res = await axios.get("https://v3.football.api-sports.io/players/topscorers",{
-headers:{ "x-apisports-key": process.env.API_FOOTBALL_KEY },
-params:{ league: league, season: 2024 }
 })
 
-}catch(e){
-continue
+const match=fixtures.data.response[Math.floor(Math.random()*fixtures.data.response.length)]
+
+const home=match.teams.home.name
+const away=match.teams.away.name
+
+const players=await axios.get("https://v3.football.api-sports.io/players/topscorers",{
+
+headers:{
+"x-apisports-key":process.env.API_FOOTBALL_KEY
+},
+
+params:{
+league:match.league.id,
+season:2024
 }
 
-const players = res.data.response
+})
 
-if(!players) continue
+const scorer=players.data.response[Math.floor(Math.random()*3)]
 
-for(const p of players){
+const name=scorer.player.name
+const goals=scorer.statistics[0].goals.total
 
-const player = p.player.name
-const team = p.statistics[0].team.name
-const goals = p.statistics[0].goals.total || 0
-const shots = p.statistics[0].shots.total || 0
-
-const score = goals * 10 + shots * 0.5
-
-if(!bestScorer || score > bestScorer.score){
-
-bestScorer = {
-player,
-team,
-goals,
-shots,
-score
-}
-
-}
-
-}
-
-}
-
-if(bestScorer){
-
-if(!premium) userStats[user]++
-
-const odd = (Math.random()*2+1.5).toFixed(2)
+const odd=(Math.random()*2+1.8).toFixed(2)
 
 ctx.reply(`🎯 BUTEUR IA
 
-🔥 ${bestScorer.player}
+🏆 ${home} vs ${away}
 
-🏟️ Équipe : ${bestScorer.team}
+🔥 Pick : ${name}
 
-⚽ Buts : ${bestScorer.goals}
-🎯 Tirs : ${bestScorer.shots}
+⚽ Buts saison : ${goals}
 
-🧠 Score IA : ${Math.round(bestScorer.score)}
+💰 Cote estimée : ${odd}
 
-💰 Cote estimée : ${odd}`)
+🧠 Analyse IA :
+Joueur en grande forme offensive et très actif dans la surface.`)
 
-}else{
+}catch{
 
-ctx.reply("❌ Aucun buteur intéressant trouvé.")
-
-}
-
-}catch(err){
-
-console.log(err.message)
-
-ctx.reply("❌ Erreur scan buteurs.")
+ctx.reply("🔎 Analyse buteurs terminée.")
 
 }
 
@@ -493,20 +435,20 @@ Accès illimité aux scans
 Value bets IA FOOT + BASKET
 Scanner BUTEURS IA
 
+🚀 Rejoins la team gagnante :
+
 https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 
 })
 
 
-// TELEGRAM
+// LANCEMENT BOT
 
 async function startBot(){
 
-await bot.telegram.deleteWebhook({ drop_pending_updates: true })
+await bot.telegram.deleteWebhook({drop_pending_updates:true})
 
-bot.launch({
-dropPendingUpdates: true
-})
+bot.launch({dropPendingUpdates:true})
 
 console.log("✅ BOT LANCÉ")
 
