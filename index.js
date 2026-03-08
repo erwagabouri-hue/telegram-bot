@@ -3,16 +3,16 @@ const axios = require(“axios”);
 const fs = require(“fs”);
 const path = require(“path”);
 
-// ─── CONFIG ────────────────────────────────────────────────────────────────────
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ODDS_API_KEY = process.env.ODDS_API_KEY;
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 
-if (!BOT_TOKEN) throw new Error(“BOT_TOKEN manquant dans les variables d’environnement”);
+if (!BOT_TOKEN) {
+console.error(“BOT_TOKEN manquant”);
+process.exit(1);
+}
 
 const bot = new Telegraf(BOT_TOKEN);
-
-// ─── FREEMIUM STORAGE ─────────────────────────────────────────────────────────
 const DATA_FILE = path.join(__dirname, “data.json”);
 
 function loadData() {
@@ -20,7 +20,7 @@ try {
 if (fs.existsSync(DATA_FILE)) {
 return JSON.parse(fs.readFileSync(DATA_FILE, “utf8”));
 }
-} catch (_) {}
+} catch (e) {}
 return { premium: [], dailyUsage: {} };
 }
 
@@ -28,7 +28,7 @@ function saveData(data) {
 try {
 fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 } catch (e) {
-console.error(“Erreur sauvegarde data:”, e.message);
+console.error(“Erreur sauvegarde:”, e.message);
 }
 }
 
@@ -38,29 +38,23 @@ return new Date().toISOString().split(“T”)[0];
 
 function canScan(userId) {
 const data = loadData();
-if (data.premium.includes(String(userId))) return { allowed: true, premium: true };
-
+if (data.premium.includes(String(userId))) {
+return { allowed: true, premium: true };
+}
 const today = getTodayKey();
-const key = `${userId}_${today}`;
+const key = String(userId) + “_” + today;
 const usage = data.dailyUsage[key] || 0;
-
-if (usage < 2) return { allowed: true, premium: false, remaining: 2 - usage };
+if (usage < 2) {
+return { allowed: true, premium: false, remaining: 2 - usage };
+}
 return { allowed: false, premium: false, remaining: 0 };
 }
 
 function incrementUsage(userId) {
 const data = loadData();
 const today = getTodayKey();
-const key = `${userId}_${today}`;
+const key = String(userId) + “_” + today;
 data.dailyUsage[key] = (data.dailyUsage[key] || 0) + 1;
-
-// Nettoyage des vieilles entrées (> 2 jours)
-const cutoff = new Date();
-cutoff.setDate(cutoff.getDate() - 2);
-for (const k of Object.keys(data.dailyUsage)) {
-const datePart = k.split(”_”).pop();
-if (datePart < cutoff.toISOString().split(“T”)[0]) delete data.dailyUsage[k];
-}
 saveData(data);
 }
 
@@ -72,41 +66,39 @@ saveData(data);
 }
 }
 
-// ─── ODDS API ─────────────────────────────────────────────────────────────────
 const FOOTBALL_SPORTS = [
-“soccer_england_league1”,       // Championship (League 1 key)
-“soccer_epl”,                   // Premier League
-“soccer_spain_la_liga”,         // La Liga
-“soccer_italy_serie_a”,         // Serie A
-“soccer_germany_bundesliga”,    // Bundesliga
-“soccer_france_ligue_one”,      // Ligue 1
-“soccer_portugal_primeira_liga”,// Primeira Liga
-“soccer_netherlands_eredivisie”,// Eredivisie
-“soccer_belgium_first_div”,     // Pro League Belgique
-“soccer_turkey_super_league”,   // Süper Lig
+“soccer_epl”,
+“soccer_england_league1”,
+“soccer_spain_la_liga”,
+“soccer_italy_serie_a”,
+“soccer_germany_bundesliga”,
+“soccer_france_ligue_one”,
+“soccer_portugal_primeira_liga”,
+“soccer_netherlands_eredivisie”,
+“soccer_belgium_first_div”,
+“soccer_turkey_super_league”
 ];
 
 const BASKET_SPORTS = [
 “basketball_nba”,
-“basketball_euroleague”,
+“basketball_euroleague”
 ];
 
 async function fetchOdds(sport) {
 try {
-const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds/`;
-const res = await axios.get(url, {
+const res = await axios.get(“https://api.the-odds-api.com/v4/sports/” + sport + “/odds/”, {
 params: {
 apiKey: ODDS_API_KEY,
 regions: “eu”,
 markets: “h2h”,
 oddsFormat: “decimal”,
-dateFormat: “iso”,
+dateFormat: “iso”
 },
-timeout: 10000,
+timeout: 10000
 });
 return res.data || [];
 } catch (e) {
-console.error(`Erreur odds pour ${sport}:`, e.message);
+console.error(“Erreur odds “ + sport + “: “ + e.message);
 return [];
 }
 }
@@ -120,52 +112,38 @@ return diff > 0 && diff <= 48 * 3600 * 1000;
 
 function extractBestValueBets(games) {
 const picks = [];
-
 for (const game of games) {
 if (!isWithin48h(game.commence_time)) continue;
 if (!game.bookmakers || game.bookmakers.length === 0) continue;
-
-```
-// Collecter toutes les cotes pour chaque outcome
 const oddsMap = {};
 for (const bk of game.bookmakers) {
-  for (const market of bk.markets || []) {
-    if (market.key !== "h2h") continue;
-    for (const outcome of market.outcomes || []) {
-      if (!oddsMap[outcome.name]) oddsMap[outcome.name] = [];
-      oddsMap[outcome.name].push(outcome.price);
-    }
-  }
+for (const market of bk.markets || []) {
+if (market.key !== “h2h”) continue;
+for (const outcome of market.outcomes || []) {
+if (!oddsMap[outcome.name]) oddsMap[outcome.name] = [];
+oddsMap[outcome.name].push(outcome.price);
 }
-
-// Trouver la meilleure cote pour chaque équipe
+}
+}
 let bestPick = null;
 let bestOdd = 0;
-
-for (const [team, odds] of Object.entries(oddsMap)) {
-  const maxOdd = Math.max(...odds);
-  // Value bet : cote entre 1.50 et 3.50 (zone intéressante)
-  if (maxOdd > bestOdd && maxOdd >= 1.50 && maxOdd <= 3.50) {
-    bestOdd = maxOdd;
-    bestPick = team;
-  }
+for (const team in oddsMap) {
+const maxOdd = Math.max.apply(null, oddsMap[team]);
+if (maxOdd > bestOdd && maxOdd >= 1.50 && maxOdd <= 3.50) {
+bestOdd = maxOdd;
+bestPick = team;
 }
-
+}
 if (bestPick) {
-  picks.push({
-    home: game.home_team,
-    away: game.away_team,
-    pick: bestPick,
-    odd: bestOdd.toFixed(2),
-    date: game.commence_time,
-  });
+picks.push({
+home: game.home_team,
+away: game.away_team,
+pick: bestPick,
+odd: bestOdd.toFixed(2)
+});
 }
-```
-
 }
-
-// Trier par cote décroissante et retourner top 3
-picks.sort((a, b) => parseFloat(b.odd) - parseFloat(a.odd));
+picks.sort(function(a, b) { return parseFloat(b.odd) - parseFloat(a.odd); });
 return picks.slice(0, 3);
 }
 
@@ -173,7 +151,7 @@ async function scanFootball() {
 const allGames = [];
 for (const sport of FOOTBALL_SPORTS) {
 const games = await fetchOdds(sport);
-allGames.push(…games);
+for (const g of games) allGames.push(g);
 }
 return extractBestValueBets(allGames);
 }
@@ -182,24 +160,22 @@ async function scanBasket() {
 const allGames = [];
 for (const sport of BASKET_SPORTS) {
 const games = await fetchOdds(sport);
-allGames.push(…games);
+for (const g of games) allGames.push(g);
 }
-const picks = extractBestValueBets(allGames);
-return picks.slice(0, 1); // 1 pick pour le basket
+return extractBestValueBets(allGames).slice(0, 1);
 }
 
-// ─── API-FOOTBALL ─────────────────────────────────────────────────────────────
 async function fetchTodayFixtures() {
 try {
 const today = new Date().toISOString().split(“T”)[0];
 const res = await axios.get(“https://v3.football.api-sports.io/fixtures”, {
 headers: { “x-apisports-key”: API_FOOTBALL_KEY },
 params: { date: today },
-timeout: 10000,
+timeout: 10000
 });
-return res.data?.response || [];
+return res.data && res.data.response ? res.data.response : [];
 } catch (e) {
-console.error(“Erreur fixtures:”, e.message);
+console.error(“Erreur fixtures: “ + e.message);
 return [];
 }
 }
@@ -208,13 +184,13 @@ async function fetchTopScorer(leagueId, season) {
 try {
 const res = await axios.get(“https://v3.football.api-sports.io/players/topscorers”, {
 headers: { “x-apisports-key”: API_FOOTBALL_KEY },
-params: { league: leagueId, season },
-timeout: 10000,
+params: { league: leagueId, season: season },
+timeout: 10000
 });
-const players = res.data?.response || [];
+const players = res.data && res.data.response ? res.data.response : [];
 return players[0] || null;
 } catch (e) {
-console.error(“Erreur top scorer:”, e.message);
+console.error(“Erreur top scorer: “ + e.message);
 return null;
 }
 }
@@ -222,347 +198,199 @@ return null;
 async function scanButeurs() {
 const fixtures = await fetchTodayFixtures();
 if (!fixtures.length) return null;
-
-// Ligues majeures prioritaires
-const majorLeagues = [39, 140, 135, 78, 61, 94, 88, 144, 203]; // PL, Liga, Serie A, Bundesliga, L1, Portugal, Eredivisie, Belgique, Turquie
+const majorLeagues = [39, 140, 135, 78, 61, 94, 88, 144, 203];
 const currentSeason = new Date().getFullYear();
-
-// Trouver un match d’une ligue majeure
-let targetFixture = fixtures.find(
-(f) => majorLeagues.includes(f.league?.id) && f.fixture?.status?.short === “NS”
-);
-
-if (!targetFixture) targetFixture = fixtures.find((f) => f.fixture?.status?.short === “NS”);
-if (!targetFixture) targetFixture = fixtures[0];
-
-const leagueId = targetFixture.league?.id;
-const season = targetFixture.league?.season || currentSeason;
-
+let target = null;
+for (const f of fixtures) {
+if (majorLeagues.indexOf(f.league && f.league.id) !== -1 && f.fixture && f.fixture.status && f.fixture.status.short === “NS”) {
+target = f;
+break;
+}
+}
+if (!target) {
+for (const f of fixtures) {
+if (f.fixture && f.fixture.status && f.fixture.status.short === “NS”) {
+target = f;
+break;
+}
+}
+}
+if (!target) target = fixtures[0];
+const leagueId = target.league && target.league.id;
+const season = (target.league && target.league.season) || currentSeason;
 const topScorer = await fetchTopScorer(leagueId, season);
 if (!topScorer) return null;
-
-const goals = topScorer.statistics?.[0]?.goals?.total || 0;
-// Cote estimée basée sur les buts marqués
+const goals = (topScorer.statistics && topScorer.statistics[0] && topScorer.statistics[0].goals && topScorer.statistics[0].goals.total) || 0;
 const estimatedOdd = goals > 20 ? 1.80 : goals > 15 ? 2.10 : goals > 10 ? 2.40 : 2.80;
-
 return {
-home: targetFixture.teams?.home?.name || “Équipe A”,
-away: targetFixture.teams?.away?.name || “Équipe B”,
-playerName: topScorer.player?.name || “Joueur inconnu”,
-goals,
+home: (target.teams && target.teams.home && target.teams.home.name) || “Equipe A”,
+away: (target.teams && target.teams.away && target.teams.away.name) || “Equipe B”,
+playerName: (topScorer.player && topScorer.player.name) || “Joueur inconnu”,
+goals: goals,
 estimatedOdd: estimatedOdd.toFixed(2),
-league: targetFixture.league?.name || “Ligue inconnue”,
+league: (target.league && target.league.name) || “Ligue inconnue”
 };
 }
 
-// ─── KEYBOARD MENU ────────────────────────────────────────────────────────────
 const mainMenu = Markup.keyboard([
-[“⚽ Scanner FOOT”, “🏀 Scanner BASKET”],
-[“🎯 Scanner BUTEURS”, “👑 Meilleurs cotes IA”],
-[“📩 Nous contacter”, “💎 Passer Premium”],
+[”\u26BD Scanner FOOT”, “\uD83C\uDFC0 Scanner BASKET”],
+[”\uD83C\uDFAF Scanner BUTEURS”, “\uD83D\uDC51 Meilleurs cotes IA”],
+[”\uD83D\uDCE9 Nous contacter”, “\uD83D\uDC8E Passer Premium”]
 ]).resize();
 
-// ─── BOT HANDLERS ─────────────────────────────────────────────────────────────
+const LIMIT_MSG = “Limite journaliere atteinte\n\nTu as utilise tes 2 scans gratuits d’aujourd’hui.\n\nPasse Premium pour des scans illimites !\nhttps://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00”;
 
-bot.start((ctx) => {
+bot.start(function(ctx) {
 ctx.reply(
-`👋 Bienvenue sur *IA Value Bot* !\n\n` +
-`🤖 Je t'aide à trouver les meilleures value bets du jour grâce à l'intelligence artificielle.\n\n` +
-`📊 *Fonctionnalités disponibles :*\n` +
-`⚽ Scanner les matchs de foot\n` +
-`🏀 Scanner les matchs de basket\n` +
-`🎯 Scanner les buteurs du jour\n` +
-`👑 Meilleurs cotes IA\n\n` +
-`🆓 Accès gratuit : *2 scans/jour*\n` +
-`💎 Premium : scans *illimités*`,
-{ parse_mode: “Markdown”, …mainMenu }
+“Bienvenue sur IA Value Bot !\n\nJe t’aide a trouver les meilleures value bets du jour.\n\nAcces gratuit : 2 scans/jour\nPremium : scans illimites”,
+mainMenu
 );
 });
 
-bot.help((ctx) => {
-ctx.reply(
-`ℹ️ *Aide IA Value Bot*\n\n` +
-`Utilise les boutons du menu pour accéder aux fonctionnalités.\n\n` +
-`🆓 Gratuit : 2 scans/jour\n` +
-`💎 Premium : illimité\n\n` +
-`En cas de problème : @la_prediction777`,
-{ parse_mode: “Markdown” }
-);
+bot.help(function(ctx) {
+ctx.reply(“Aide IA Value Bot\n\nUtilise les boutons du menu.\n\nGratuit : 2 scans/jour\nPremium : illimite”);
 });
 
-// ── SCANNER FOOT ──────────────────────────────────────────────────────────────
-bot.hears(“⚽ Scanner FOOT”, async (ctx) => {
+bot.hears(”\u26BD Scanner FOOT”, async function(ctx) {
 const userId = ctx.from.id;
 const check = canScan(userId);
-
-if (!check.allowed) {
-return ctx.reply(
-`⛔ *Limite journalière atteinte*\n\n` +
-`Tu as utilisé tes 2 scans gratuits d'aujourd'hui.\n\n` +
-`💎 Passe *Premium* pour des scans illimités !\n` +
-`👉 https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`,
-{ parse_mode: “Markdown” }
-);
-}
-
-const msg = await ctx.reply(“⏳ *Analyse en cours…* Je scanne les cotes des ligues européennes.”, { parse_mode: “Markdown” });
-
+if (!check.allowed) return ctx.reply(LIMIT_MSG);
+await ctx.reply(“Analyse en cours… Je scanne les ligues europeennes.”);
 try {
 const picks = await scanFootball();
 incrementUsage(userId);
-
-```
-if (!picks.length) {
-  return ctx.reply("😔 Aucun value bet détecté pour les prochaines 48h. Réessaie plus tard !");
-}
-
-let text = `🔥 *TOP VALUE BETS IA — FOOT*\n`;
-text += `📅 _Prochaines 48h_\n\n`;
-
-const emojis = ["1️⃣", "2️⃣", "3️⃣"];
-picks.forEach((pick, i) => {
-  text += `${emojis[i]} *${pick.home} vs ${pick.away}*\n`;
-  text += `🎯 Pick : *${pick.pick}*\n`;
-  text += `💰 Cote : \`${pick.odd}\`\n\n`;
+if (!picks.length) return ctx.reply(“Aucun value bet detecte pour les prochaines 48h. Reessaie plus tard !”);
+let text = “TOP VALUE BETS IA - FOOT\nProchaines 48h\n\n”;
+const nums = [“1.”, “2.”, “3.”];
+picks.forEach(function(pick, i) {
+text += nums[i] + “ “ + pick.home + “ vs “ + pick.away + “\n”;
+text += “Pick : “ + pick.pick + “\n”;
+text += “Cote : “ + pick.odd + “\n\n”;
 });
-
-if (!check.premium) {
-  text += `\n🆓 Scans restants aujourd'hui : *${check.remaining - 1}*\n`;
-  text += `💎 _Premium pour des scans illimités_`;
-}
-
-await ctx.reply(text, { parse_mode: "Markdown" });
-```
-
+if (!check.premium) text += “\nScans restants : “ + (check.remaining - 1);
+ctx.reply(text);
 } catch (e) {
 console.error(“Erreur scan foot:”, e.message);
-ctx.reply(“❌ Une erreur est survenue lors de l’analyse. Réessaie dans quelques instants.”);
+ctx.reply(“Une erreur est survenue. Reessaie dans quelques instants.”);
 }
 });
 
-// ── SCANNER BASKET ────────────────────────────────────────────────────────────
-bot.hears(“🏀 Scanner BASKET”, async (ctx) => {
+bot.hears(”\uD83C\uDFC0 Scanner BASKET”, async function(ctx) {
 const userId = ctx.from.id;
 const check = canScan(userId);
-
-if (!check.allowed) {
-return ctx.reply(
-`⛔ *Limite journalière atteinte*\n\n` +
-`Tu as utilisé tes 2 scans gratuits d'aujourd'hui.\n\n` +
-`💎 Passe *Premium* pour des scans illimités !\n` +
-`👉 https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`,
-{ parse_mode: “Markdown” }
-);
-}
-
-await ctx.reply(“⏳ *Analyse en cours…* Je scanne NBA et Euroleague.”, { parse_mode: “Markdown” });
-
+if (!check.allowed) return ctx.reply(LIMIT_MSG);
+await ctx.reply(“Analyse en cours… Je scanne NBA et Euroleague.”);
 try {
 const picks = await scanBasket();
 incrementUsage(userId);
-
-```
-if (!picks.length) {
-  return ctx.reply("😔 Aucun value bet basket détecté pour les prochaines 48h. Réessaie plus tard !");
-}
-
-let text = `🔥 *TOP VALUE BET IA — BASKET*\n`;
-text += `📅 _Prochaines 48h_\n\n`;
-
-picks.forEach((pick) => {
-  text += `🏀 *${pick.home} vs ${pick.away}*\n`;
-  text += `🎯 Pick : *${pick.pick}*\n`;
-  text += `💰 Cote : \`${pick.odd}\`\n`;
+if (!picks.length) return ctx.reply(“Aucun value bet basket detecte. Reessaie plus tard !”);
+let text = “TOP VALUE BET IA - BASKET\nProchaines 48h\n\n”;
+picks.forEach(function(pick) {
+text += pick.home + “ vs “ + pick.away + “\n”;
+text += “Pick : “ + pick.pick + “\n”;
+text += “Cote : “ + pick.odd + “\n”;
 });
-
-if (!check.premium) {
-  text += `\n🆓 Scans restants aujourd'hui : *${check.remaining - 1}*\n`;
-  text += `💎 _Premium pour des scans illimités_`;
-}
-
-await ctx.reply(text, { parse_mode: "Markdown" });
-```
-
+if (!check.premium) text += “\nScans restants : “ + (check.remaining - 1);
+ctx.reply(text);
 } catch (e) {
 console.error(“Erreur scan basket:”, e.message);
-ctx.reply(“❌ Une erreur est survenue lors de l’analyse. Réessaie dans quelques instants.”);
+ctx.reply(“Une erreur est survenue. Reessaie dans quelques instants.”);
 }
 });
 
-// ── SCANNER BUTEURS ───────────────────────────────────────────────────────────
-bot.hears(“🎯 Scanner BUTEURS”, async (ctx) => {
+bot.hears(”\uD83C\uDFAF Scanner BUTEURS”, async function(ctx) {
 const userId = ctx.from.id;
 const check = canScan(userId);
-
-if (!check.allowed) {
-return ctx.reply(
-`⛔ *Limite journalière atteinte*\n\n` +
-`Tu as utilisé tes 2 scans gratuits d'aujourd'hui.\n\n` +
-`💎 Passe *Premium* pour des scans illimités !\n` +
-`👉 https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`,
-{ parse_mode: “Markdown” }
-);
-}
-
-await ctx.reply(“⏳ *Analyse en cours…* Je recherche le meilleur buteur du jour.”, { parse_mode: “Markdown” });
-
+if (!check.allowed) return ctx.reply(LIMIT_MSG);
+await ctx.reply(“Analyse en cours… Je recherche le meilleur buteur du jour.”);
 try {
 const result = await scanButeurs();
 incrementUsage(userId);
-
-```
-if (!result) {
-  return ctx.reply("😔 Aucun match trouvé aujourd'hui pour le scanner buteurs.");
-}
-
-let text = `🎯 *BUTEUR IA*\n\n`;
-text += `🏆 *${result.home} vs ${result.away}*\n`;
-text += `🏅 Compétition : _${result.league}_\n\n`;
-text += `🔥 Pick : *${result.playerName}*\n`;
-text += `⚽ Buts saison : *${result.goals}*\n`;
-text += `💰 Cote estimée : \`${result.estimatedOdd}\`\n`;
-
-if (!check.premium) {
-  text += `\n🆓 Scans restants aujourd'hui : *${check.remaining - 1}*\n`;
-  text += `💎 _Premium pour des scans illimités_`;
-}
-
-await ctx.reply(text, { parse_mode: "Markdown" });
-```
-
+if (!result) return ctx.reply(“Aucun match trouve aujourd’hui.”);
+let text = “BUTEUR IA\n\n”;
+text += result.home + “ vs “ + result.away + “\n”;
+text += “Competition : “ + result.league + “\n\n”;
+text += “Pick : “ + result.playerName + “\n”;
+text += “Buts saison : “ + result.goals + “\n”;
+text += “Cote estimee : “ + result.estimatedOdd + “\n”;
+if (!check.premium) text += “\nScans restants : “ + (check.remaining - 1);
+ctx.reply(text);
 } catch (e) {
 console.error(“Erreur scan buteurs:”, e.message);
-ctx.reply(“❌ Une erreur est survenue lors de l’analyse. Réessaie dans quelques instants.”);
+ctx.reply(“Une erreur est survenue. Reessaie dans quelques instants.”);
 }
 });
 
-// ── MEILLEURS COTES IA ────────────────────────────────────────────────────────
-bot.hears(“👑 Meilleurs cotes IA”, async (ctx) => {
+bot.hears(”\uD83D\uDC51 Meilleurs cotes IA”, async function(ctx) {
 const userId = ctx.from.id;
 const check = canScan(userId);
-
-if (!check.allowed) {
-return ctx.reply(
-`⛔ *Limite journalière atteinte*\n\n` +
-`Tu as utilisé tes 2 scans gratuits d'aujourd'hui.\n\n` +
-`💎 Passe *Premium* pour des scans illimités !\n` +
-`👉 https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`,
-{ parse_mode: “Markdown” }
-);
-}
-
-await ctx.reply(“⏳ *Analyse globale en cours…* Football + Basket.”, { parse_mode: “Markdown” });
-
+if (!check.allowed) return ctx.reply(LIMIT_MSG);
+await ctx.reply(“Analyse globale en cours… Football + Basket.”);
 try {
-const [footPicks, basketPicks] = await Promise.all([scanFootball(), scanBasket()]);
+const footPicks = await scanFootball();
+const basketPicks = await scanBasket();
 incrementUsage(userId);
-
-```
-// Combiner et trier par cote
-const allPicks = [
-  ...footPicks.map((p) => ({ ...p, sport: "⚽" })),
-  ...basketPicks.map((p) => ({ ...p, sport: "🏀" })),
-].sort((a, b) => parseFloat(b.odd) - parseFloat(a.odd)).slice(0, 5);
-
-if (!allPicks.length) {
-  return ctx.reply("😔 Aucun value bet détecté en ce moment. Réessaie plus tard !");
-}
-
-let text = `👑 *MEILLEURS VALUE BETS IA*\n`;
-text += `📅 _Football + Basket — 48h_\n\n`;
-
-allPicks.forEach((pick, i) => {
-  text += `${pick.sport} *${pick.home} vs ${pick.away}*\n`;
-  text += `🎯 Pick : *${pick.pick}*\n`;
-  text += `💰 Cote : \`${pick.odd}\`\n\n`;
+const allPicks = [];
+footPicks.forEach(function(p) { allPicks.push({ sport: “FOOT”, home: p.home, away: p.away, pick: p.pick, odd: p.odd }); });
+basketPicks.forEach(function(p) { allPicks.push({ sport: “BASKET”, home: p.home, away: p.away, pick: p.pick, odd: p.odd }); });
+allPicks.sort(function(a, b) { return parseFloat(b.odd) - parseFloat(a.odd); });
+const top = allPicks.slice(0, 5);
+if (!top.length) return ctx.reply(“Aucun value bet detecte en ce moment.”);
+let text = “MEILLEURS VALUE BETS IA\nFootball + Basket - 48h\n\n”;
+top.forEach(function(pick) {
+text += “[” + pick.sport + “] “ + pick.home + “ vs “ + pick.away + “\n”;
+text += “Pick : “ + pick.pick + “\n”;
+text += “Cote : “ + pick.odd + “\n\n”;
 });
-
-if (!check.premium) {
-  text += `🆓 Scans restants : *${check.remaining - 1}*\n`;
-  text += `💎 _Premium pour des scans illimités_`;
-}
-
-await ctx.reply(text, { parse_mode: "Markdown" });
-```
-
+if (!check.premium) text += “Scans restants : “ + (check.remaining - 1);
+ctx.reply(text);
 } catch (e) {
 console.error(“Erreur meilleurs cotes:”, e.message);
-ctx.reply(“❌ Une erreur est survenue. Réessaie dans quelques instants.”);
+ctx.reply(“Une erreur est survenue. Reessaie dans quelques instants.”);
 }
 });
 
-// ── CONTACT ───────────────────────────────────────────────────────────────────
-bot.hears(“📩 Nous contacter”, (ctx) => {
+bot.hears(”\uD83D\uDCE9 Nous contacter”, function(ctx) {
+ctx.reply(“Nous contacter\n\nRejoins-nous sur Instagram :\nhttps://www.instagram.com/la_prediction777”);
+});
+
+bot.hears(”\uD83D\uDC8E Passer Premium”, function(ctx) {
 ctx.reply(
-`📩 *Nous contacter*\n\n` +
-`Pour toute question ou suggestion, rejoins-nous sur Instagram :\n\n` +
-`📸 https://www.instagram.com/la_prediction777\n\n` +
-`_On répond à tous les messages !_ 🙌`,
-{ parse_mode: “Markdown” }
+“PREMIUM IA VALUE BOT\n\n” +
+“Acces illimite aux scans\n” +
+“Value bets IA FOOT + BASKET\n” +
+“Scanner BUTEURS IA\n\n” +
+“Lien paiement :\nhttps://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00\n\n” +
+“Contacte-nous apres paiement : @la_prediction777”
 );
 });
 
-// ── PREMIUM ───────────────────────────────────────────────────────────────────
-bot.hears(“💎 Passer Premium”, (ctx) => {
-ctx.reply(
-`💎 *PREMIUM IA VALUE BOT*\n\n` +
-`✅ Accès *illimité* aux scans\n` +
-`✅ Value bets IA *FOOT + BASKET*\n` +
-`✅ Scanner *BUTEURS* IA\n` +
-`✅ Meilleurs cotes IA en temps réel\n\n` +
-`━━━━━━━━━━━━━━━━━━━━\n` +
-`💳 *Lien paiement sécurisé :*\n` +
-`👉 https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00\n` +
-`━━━━━━━━━━━━━━━━━━━━\n\n` +
-`⚡ Accès activé *immédiatement* après paiement.\n` +
-`📩 Contacte-nous sur Instagram après ton paiement : @la_prediction777`,
-{ parse_mode: “Markdown” }
-);
-});
-
-// ── COMMANDE ADMIN : activer premium manuellement ─────────────────────────────
-// Usage : /addpremium <userId>
-bot.command(“addpremium”, (ctx) => {
-// Sécurité basique : seul le premier utilisateur ou via console
+bot.command(“addpremium”, function(ctx) {
 const args = ctx.message.text.split(” “);
 if (args.length < 2) return ctx.reply(“Usage : /addpremium <userId>”);
-const targetId = args[1];
-addPremium(targetId);
-ctx.reply(`✅ L'utilisateur ${targetId} est maintenant Premium.`);
+addPremium(args[1]);
+ctx.reply(“Utilisateur “ + args[1] + “ est maintenant Premium.”);
 });
 
-// ── COMMANDE : voir son statut ────────────────────────────────────────────────
-bot.command(“status”, (ctx) => {
+bot.command(“status”, function(ctx) {
 const userId = ctx.from.id;
 const check = canScan(userId);
-const statusText = check.premium
-? “💎 *Premium* — Scans illimités”
-: `🆓 *Gratuit* — ${check.remaining} scan(s) restant(s) aujourd'hui`;
-ctx.reply(`👤 *Ton statut :*\n\n${statusText}`, { parse_mode: “Markdown” });
+const txt = check.premium ? “Premium - Scans illimites” : “Gratuit - “ + check.remaining + “ scan(s) restant(s) aujourd’hui”;
+ctx.reply(“Ton statut : “ + txt);
 });
 
-// ─── GESTION ERREURS ──────────────────────────────────────────────────────────
-bot.catch((err, ctx) => {
+bot.catch(function(err, ctx) {
 console.error(“Erreur bot:”, err);
-try {
-ctx.reply(“❌ Une erreur inattendue s’est produite. Réessaie dans quelques instants.”);
-} catch (_) {}
+try { ctx.reply(“Une erreur inattendue. Reessaie.”); } catch (e) {}
 });
 
-// ─── LANCEMENT ────────────────────────────────────────────────────────────────
-async function start() {
-console.log(“🚀 Démarrage du bot…”);
-try {
-await bot.launch();
-console.log(“✅ Bot démarré avec succès !”);
-} catch (e) {
-console.error(“❌ Erreur lancement:”, e.message);
+console.log(“Demarrage du bot…”);
+bot.launch().then(function() {
+console.log(“Bot demarre avec succes !”);
+}).catch(function(e) {
+console.error(“Erreur lancement:”, e.message);
 process.exit(1);
-}
-}
+});
 
-start();
-
-// Graceful stop pour Railway
-process.once(“SIGINT”, () => bot.stop(“SIGINT”));
-process.once(“SIGTERM”, () => bot.stop(“SIGTERM”));
+process.once(“SIGINT”, function() { bot.stop(“SIGINT”); });
+process.once(“SIGTERM”, function() { bot.stop(“SIGTERM”); });
