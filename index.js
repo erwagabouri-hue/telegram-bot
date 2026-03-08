@@ -6,6 +6,7 @@ const bot = new Telegraf(process.env.BOT_TOKEN)
 const MAX_FREE_SCANS = 2
 const userStats = {}
 
+
 // MENU
 
 const menu = Markup.keyboard([
@@ -16,6 +17,7 @@ const menu = Markup.keyboard([
 ["📩 Nous contacter"],
 ["💎 Passer Premium"]
 ]).resize()
+
 
 // START
 
@@ -43,9 +45,12 @@ const footballLeagues = [
 "soccer_france_ligue_one",
 "soccer_portugal_primeira_liga",
 "soccer_belgium_first_div",
-"soccer_netherlands_eredivisie"
+"soccer_netherlands_eredivisie",
+"soccer_turkey_super_league",
+"soccer_efl_champ"
 
 ]
+
 
 // LIGUES BASKET
 
@@ -57,21 +62,7 @@ const basketLeagues = [
 ]
 
 
-// FILTRE MATCH
-
-function matchSoon(date){
-
-const now = new Date()
-const limit = new Date()
-
-limit.setHours(now.getHours()+48)
-
-return date > now && date < limit
-
-}
-
-
-// SCANNER FOOT
+// SCAN FOOT
 
 bot.hears("⚽ Scanner FOOT", async(ctx)=>{
 
@@ -104,7 +95,12 @@ if(!match.bookmakers) continue
 
 const date = new Date(match.commence_time)
 
-if(!matchSoon(date)) continue
+const now = new Date()
+const limit = new Date()
+
+limit.setHours(now.getHours()+48)
+
+if(date < now || date > limit) continue
 
 let bestOdd = 0
 let bestPick = ""
@@ -145,25 +141,27 @@ odd:bestOdd
 
 }
 
-if(picks.length > 0){
 
-const pick = picks.sort((a,b)=>b.odd-a.odd)[0]
+if(picks.length === 0){
 
-ctx.reply(`⚽ VALUE BET IA FOOT
-
-🏆 ${pick.home} vs ${pick.away}
-
-🎯 Pick : ${pick.pick}
-
-💰 Cote : ${pick.odd}
-
-🧠 Analyse IA : Value détectée sur les bookmakers.`)
-
-}else{
-
-ctx.reply("🔎 Analyse terminée.")
+return ctx.reply("🔎 Analyse en cours...")
 
 }
+
+
+const top3 = picks.sort((a,b)=>b.odd-a.odd).slice(0,3)
+
+let message = "🔥 TOP VALUE BETS IA\n\n"
+
+top3.forEach((p,i)=>{
+
+message += `${i+1}️⃣ ${p.home} vs ${p.away}\n`
+message += `🎯 Pick : ${p.pick}\n`
+message += `💰 Cote : ${p.odd}\n\n`
+
+})
+
+ctx.reply(message)
 
 }catch{
 
@@ -174,7 +172,7 @@ ctx.reply("❌ Erreur analyse.")
 })
 
 
-// SCANNER BASKET
+// SCAN BASKET
 
 bot.hears("🏀 Scanner BASKET", async(ctx)=>{
 
@@ -205,10 +203,6 @@ for(const match of res.data){
 
 if(!match.bookmakers) continue
 
-const date = new Date(match.commence_time)
-
-if(!matchSoon(date)) continue
-
 let bestOdd = 0
 let bestPick = ""
 
@@ -248,7 +242,13 @@ odd:bestOdd
 
 }
 
-if(picks.length > 0){
+
+if(picks.length === 0){
+
+return ctx.reply("🔎 Analyse basket en cours...")
+
+}
+
 
 const pick = picks.sort((a,b)=>b.odd-a.odd)[0]
 
@@ -262,12 +262,6 @@ ctx.reply(`🏀 VALUE BET IA BASKET
 
 🧠 Analyse IA : Match avec potentiel value.`)
 
-}else{
-
-ctx.reply("🔎 Analyse terminée.")
-
-}
-
 }catch{
 
 ctx.reply("❌ Erreur analyse.")
@@ -277,7 +271,7 @@ ctx.reply("❌ Erreur analyse.")
 })
 
 
-// SCANNER BUTEURS
+// SCAN BUTEURS
 
 bot.hears("🎯 Scanner BUTEURS", async(ctx)=>{
 
@@ -295,7 +289,9 @@ date:today
 })
 
 if(fixtures.data.response.length === 0){
+
 return ctx.reply("🔎 Aucun match aujourd'hui.")
+
 }
 
 const match = fixtures.data.response[Math.floor(Math.random()*fixtures.data.response.length)]
@@ -325,7 +321,7 @@ ctx.reply(`🎯 BUTEUR IA
 💰 Cote estimée : 2.20
 
 🧠 Analyse IA :
-Joueur clé offensif et principal finisseur.`)
+Attaquant très actif offensivement et principal finisseur.`)
 
 }catch{
 
