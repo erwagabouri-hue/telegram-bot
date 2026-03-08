@@ -1,14 +1,10 @@
 const { Telegraf, Markup } = require("telegraf")
 const axios = require("axios")
-const fs = require("fs")
-
-console.log("🚀 IA VALUE BOT PRO")
 
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 const MAX_FREE_SCANS = 2
 const userStats = {}
-
 
 // MENU
 
@@ -20,7 +16,6 @@ const menu = Markup.keyboard([
 ["📩 Nous contacter"],
 ["💎 Passer Premium"]
 ]).resize()
-
 
 // START
 
@@ -37,9 +32,34 @@ Détection automatique de value bets
 })
 
 
-// FILTRE MATCH (48H)
+// LIGUES FOOT
 
-function isSoon(date){
+const footballLeagues = [
+
+"soccer_epl",
+"soccer_spain_la_liga",
+"soccer_italy_serie_a",
+"soccer_germany_bundesliga",
+"soccer_france_ligue_one",
+"soccer_portugal_primeira_liga",
+"soccer_belgium_first_div",
+"soccer_netherlands_eredivisie"
+
+]
+
+// LIGUES BASKET
+
+const basketLeagues = [
+
+"basketball_nba",
+"basketball_euroleague"
+
+]
+
+
+// FILTRE MATCH
+
+function matchSoon(date){
 
 const now = new Date()
 const limit = new Date()
@@ -51,31 +71,13 @@ return date > now && date < limit
 }
 
 
-// LIGUES FOOT
-
-const footballLeagues = [
-"soccer_epl",
-"soccer_spain_la_liga",
-"soccer_italy_serie_a",
-"soccer_germany_bundesliga",
-"soccer_france_ligue_one"
-]
-
-// LIGUES BASKET
-
-const basketLeagues = [
-"basketball_nba",
-"basketball_euroleague"
-]
-
-
-// SCAN FOOT
+// SCANNER FOOT
 
 bot.hears("⚽ Scanner FOOT", async(ctx)=>{
 
 try{
 
-let bestPick=null
+let picks=[]
 
 for(const league of footballLeagues){
 
@@ -102,7 +104,10 @@ if(!match.bookmakers) continue
 
 const date = new Date(match.commence_time)
 
-if(!isSoon(date)) continue
+if(!matchSoon(date)) continue
+
+let bestOdd = 0
+let bestPick = ""
 
 for(const bookmaker of match.bookmakers){
 
@@ -110,24 +115,29 @@ for(const market of bookmaker.markets){
 
 for(const outcome of market.outcomes){
 
-const odd = outcome.price
+if(outcome.price > bestOdd){
 
-if(odd < 1.25 || odd > 4.5) continue
+bestOdd = outcome.price
+bestPick = outcome.name
 
-const prob = 1/odd
-const ai = prob*1.18
+}
 
-const conf = Math.round(ai*100)
+}
 
-if(!bestPick || odd > bestPick.odd){
+}
 
-bestPick={
+}
+
+if(bestOdd > 1.30){
+
+picks.push({
+
 home:match.home_team,
 away:match.away_team,
-pick:outcome.name,
-odd,
-conf
-}
+pick:bestPick,
+odd:bestOdd
+
+})
 
 }
 
@@ -135,23 +145,19 @@ conf
 
 }
 
-}
+if(picks.length > 0){
 
-}
-
-}
-
-if(bestPick){
+const pick = picks.sort((a,b)=>b.odd-a.odd)[0]
 
 ctx.reply(`⚽ VALUE BET IA FOOT
 
-🏆 ${bestPick.home} vs ${bestPick.away}
+🏆 ${pick.home} vs ${pick.away}
 
-🎯 Pick : ${bestPick.pick}
+🎯 Pick : ${pick.pick}
 
-💰 Cote : ${bestPick.odd}
+💰 Cote : ${pick.odd}
 
-🧠 Confiance IA : ${bestPick.conf}%`)
+🧠 Analyse IA : Value détectée sur les bookmakers.`)
 
 }else{
 
@@ -168,13 +174,13 @@ ctx.reply("❌ Erreur analyse.")
 })
 
 
-// SCAN BASKET
+// SCANNER BASKET
 
 bot.hears("🏀 Scanner BASKET", async(ctx)=>{
 
 try{
 
-let bestPick=null
+let picks=[]
 
 for(const league of basketLeagues){
 
@@ -201,7 +207,10 @@ if(!match.bookmakers) continue
 
 const date = new Date(match.commence_time)
 
-if(!isSoon(date)) continue
+if(!matchSoon(date)) continue
+
+let bestOdd = 0
+let bestPick = ""
 
 for(const bookmaker of match.bookmakers){
 
@@ -209,24 +218,29 @@ for(const market of bookmaker.markets){
 
 for(const outcome of market.outcomes){
 
-const odd = outcome.price
+if(outcome.price > bestOdd){
 
-if(odd < 1.25 || odd > 4.5) continue
+bestOdd = outcome.price
+bestPick = outcome.name
 
-const prob = 1/odd
-const ai = prob*1.18
+}
 
-const conf = Math.round(ai*100)
+}
 
-if(!bestPick || odd > bestPick.odd){
+}
 
-bestPick={
+}
+
+if(bestOdd > 1.30){
+
+picks.push({
+
 home:match.home_team,
 away:match.away_team,
-pick:outcome.name,
-odd,
-conf
-}
+pick:bestPick,
+odd:bestOdd
+
+})
 
 }
 
@@ -234,23 +248,19 @@ conf
 
 }
 
-}
+if(picks.length > 0){
 
-}
-
-}
-
-if(bestPick){
+const pick = picks.sort((a,b)=>b.odd-a.odd)[0]
 
 ctx.reply(`🏀 VALUE BET IA BASKET
 
-🏆 ${bestPick.home} vs ${bestPick.away}
+🏆 ${pick.home} vs ${pick.away}
 
-🎯 Pick : ${bestPick.pick}
+🎯 Pick : ${pick.pick}
 
-💰 Cote : ${bestPick.odd}
+💰 Cote : ${pick.odd}
 
-🧠 Confiance IA : ${bestPick.conf}%`)
+🧠 Analyse IA : Match avec potentiel value.`)
 
 }else{
 
@@ -267,7 +277,7 @@ ctx.reply("❌ Erreur analyse.")
 })
 
 
-// SCAN BUTEURS
+// SCANNER BUTEURS
 
 bot.hears("🎯 Scanner BUTEURS", async(ctx)=>{
 
@@ -284,7 +294,7 @@ date:today
 }
 })
 
-if(fixtures.data.response.length===0){
+if(fixtures.data.response.length === 0){
 return ctx.reply("🔎 Aucun match aujourd'hui.")
 }
 
@@ -315,7 +325,7 @@ ctx.reply(`🎯 BUTEUR IA
 💰 Cote estimée : 2.20
 
 🧠 Analyse IA :
-Attaquant très actif offensivement et principal finisseur de son équipe.`)
+Joueur clé offensif et principal finisseur.`)
 
 }catch{
 
