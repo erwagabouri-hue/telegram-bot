@@ -2,6 +2,8 @@ const { Telegraf, Markup } = require("telegraf")
 const axios = require("axios")
 const fs = require("fs")
 
+console.log("🚀 IA VALUE BOT PRO")
+
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 const MAX_FREE_SCANS = 2
@@ -35,7 +37,7 @@ Détection automatique de value bets
 })
 
 
-// DATE FILTRE (48H)
+// FILTRE MATCH (48H)
 
 function isSoon(date){
 
@@ -110,14 +112,14 @@ for(const outcome of market.outcomes){
 
 const odd = outcome.price
 
-if(odd < 1.4 || odd > 3) continue
+if(odd < 1.25 || odd > 4.5) continue
 
 const prob = 1/odd
-const ai = prob*1.12
+const ai = prob*1.18
 
 const conf = Math.round(ai*100)
 
-if(!bestPick || conf > bestPick.conf){
+if(!bestPick || odd > bestPick.odd){
 
 bestPick={
 home:match.home_team,
@@ -209,14 +211,14 @@ for(const outcome of market.outcomes){
 
 const odd = outcome.price
 
-if(odd < 1.4 || odd > 3) continue
+if(odd < 1.25 || odd > 4.5) continue
 
 const prob = 1/odd
-const ai = prob*1.12
+const ai = prob*1.18
 
 const conf = Math.round(ai*100)
 
-if(!bestPick || conf > bestPick.conf){
+if(!bestPick || odd > bestPick.odd){
 
 bestPick={
 home:match.home_team,
@@ -310,7 +312,7 @@ ctx.reply(`🎯 BUTEUR IA
 
 ⚽ Buts saison : ${player.statistics[0].goals.total}
 
-💰 Cote estimée : 2.10
+💰 Cote estimée : 2.20
 
 🧠 Analyse IA :
 Attaquant très actif offensivement et principal finisseur de son équipe.`)
@@ -351,4 +353,5 @@ https://buy.stripe.com/5kQ4gs1fl6Ld7deaQQ0ZW00`)
 // LANCEMENT
 
 bot.launch()
+
 console.log("✅ BOT LANCÉ")
