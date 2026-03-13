@@ -4,10 +4,37 @@ const cron = require('node-cron');
 
 const TOKEN = process.env.BOT_TOKEN;
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
+const ODDS_API_KEY = process.env.ODDS_API_KEY;
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
+// ─── SYSTÈME DE LIMITE QUOTIDIENNE ───────────────────────────
+// Stockage en mémoire : { userId: { safe: 'YYYY-MM-DD', fun: ..., combine: ..., buteur: ... } }
+const userUsage = {};
+
+function getTodayDate() {
+  return new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
+}
+
+function hasUsedToday(userId, category) {
+  const usage = userUsage[userId];
+  if (!usage) return false;
+  return usage[category] === getTodayDate();
+}
+
+function markAsUsed(userId, category) {
+  if (!userUsage[userId]) userUsage[userId] = {};
+  userUsage[userId][category] = getTodayDate();
+}
+
+// Reset automatique à minuit
+cron.schedule('0 0 * * *', () => {
+  Object.keys(userUsage).forEach(uid => { userUsage[uid] = {}; });
+  console.log('🔄 Limites quotidiennes réinitialisées');
+}, { timezone: 'Europe/Paris' });
+
 // ─── HELPERS API ─────────────────────────────────────────────
+
 async function getFixturesToday() {
   const today = new Date().toISOString().split('T')[0];
   try {
@@ -17,29 +44,8 @@ async function getFixturesToday() {
     });
     return res.data.response || [];
   } catch (e) {
-    console.error('Erreur API fixtures:', e.message);
+    console.error('Erreur fixtures:', e.message);
     return [];
-  }
-}
-
-async function getOdds(fixtureId) {
-  try {
-    const res = await axios.get('https://v3.football.api-sports.io/odds', {
-      headers: { 'x-apisports-key': API_FOOTBALL_KEY },
-      params: { fixture: fixtureId, bookmaker: 6 } // 6 = Bet365
-    });
-    const data = res.data.response;
-    if (!data || data.length === 0) return null;
-    const bets = data[0]?.bookmakers?.[0]?.bets;
-    if (!bets) return null;
-
-    const matchWinner = bets.find(b => b.name === 'Match Winner');
-    const btts = bets.find(b => b.name === 'Both Teams Score');
-    const scorer = bets.find(b => b.name === 'Anytime Score');
-
-    return { matchWinner, btts, scorer, allBets: bets };
-  } catch (e) {
-    return null;
   }
 }
 
@@ -61,56 +67,144 @@ async function getTopScorers(leagueId, season) {
       headers: { 'x-apisports-key': API_FOOTBALL_KEY },
       params: { league: leagueId, season: season }
     });
-    return res.data.response?.slice(0, 10) || [];
+    return res.data.response?.slice(0, 15) || [];
   } catch (e) {
     return [];
   }
 }
 
+async function getRealOdds() {
+  try {
+    const res = await axios.get('https://api.the-odds-api.com/v4/sports/soccer/odds', {
+      params: {
+        apiKey: ODDS_API_KEY,
+        regions: 'eu',
+        markets: 'h2h',
+        oddsFormat: 'decimal',
+        dateFormat: 'iso'
+      }
+    });
+    return res.data || [];
+  } catch (e) {
+    console.error('Erreur Odds API:', e.message);
+    return [];
+  }
+}
+
+function findOddsForMatch(oddsData, homeTeam, awayTeam) {
+  if (!oddsData || oddsData.length === 0) return null;
+  const normalize = str => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const homeN = normalize(homeTeam);
+  const awayN = normalize(awayTeam);
+
+  const match = oddsData.find(o => {
+    const h = normalize(o.home_team);
+    const a = normalize(o.away_team);
+    return (h.includes(homeN.slice(0, 5)) || homeN.includes(h.slice(0, 5))) &&
+           (a.includes(awayN.slice(0, 5)) || awayN.includes(a.slice(0, 5)));
+  });
+
+  if (!match) return null;
+  const bookmaker = match.bookmakers?.[0];
+  if (!bookmaker) return null;
+  const h2h = bookmaker.markets?.find(m => m.key === 'h2h');
+  if (!h2h) return null;
+
+  const normalize2 = str => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const home = h2h.outcomes?.find(o => normalize2(o.name) === normalize2(match.home_team));
+  const away = h2h.outcomes?.find(o => normalize2(o.name) === normalize2(match.away_team));
+  const draw = h2h.outcomes?.find(o => o.name === 'Draw');
+
+  return {
+    home: home ? parseFloat(home.price.toFixed(2)) : null,
+    away: away ? parseFloat(away.price.toFixed(2)) : null,
+    draw: draw ? parseFloat(draw.price.toFixed(2)) : null,
+    bookmaker: bookmaker.title
+  };
+}
+
 // ─── ANALYSE IA ──────────────────────────────────────────────
+
+function analyzeMatch(homeStats, awayStats) {
+  if (!homeStats || !awayStats) return { winner: 'home', confidence: 50 };
+
+  const homeWins = homeStats.fixtures?.wins?.home?.total || 0;
+  const homePlayed = homeStats.fixtures?.played?.home?.total || 1;
+  const awayWins = awayStats.fixtures?.wins?.away?.total || 0;
+  const awayPlayed = awayStats.fixtures?.played?.away?.total || 1;
+
+  const homeWinRate = homeWins / homePlayed;
+  const awayWinRate = awayWins / awayPlayed;
+  const homeGoalsFor = parseFloat(homeStats.goals?.for?.average?.home || 0);
+  const awayGoalsFor = parseFloat(awayStats.goals?.for?.average?.away || 0);
+  const homeGoalsAgainst = parseFloat(homeStats.goals?.against?.average?.home || 0);
+  const awayGoalsAgainst = parseFloat(awayStats.goals?.against?.average?.away || 0);
+
+  const homeForm = (homeStats.form || '').split('').slice(-5)
+    .reduce((acc, r) => acc + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0);
+  const awayForm = (awayStats.form || '').split('').slice(-5)
+    .reduce((acc, r) => acc + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0);
+
+  const homeScore = (homeWinRate * 40) + (homeGoalsFor * 12) - (homeGoalsAgainst * 6) + (homeForm * 2);
+  const awayScore = (awayWinRate * 40) + (awayGoalsFor * 12) - (awayGoalsAgainst * 6) + (awayForm * 2);
+
+  const diff = Math.abs(homeScore - awayScore);
+  let confidence = Math.min(88, 52 + diff * 1.5);
+  let winner;
+
+  if (homeScore > awayScore + 8) winner = 'home';
+  else if (awayScore > homeScore + 8) winner = 'away';
+  else { winner = 'draw'; confidence = Math.max(48, confidence - 12); }
+
+  return { winner, confidence: Math.round(confidence) };
+}
+
 function confidenceBar(score) {
   const filled = Math.round(score / 10);
   return '🟩'.repeat(filled) + '⬜'.repeat(10 - filled) + ` ${score}%`;
 }
 
-function getConfidenceLevel(pct) {
+function confidenceLabel(pct) {
   if (pct >= 80) return '🔥 TRÈS ÉLEVÉ';
   if (pct >= 65) return '✅ ÉLEVÉ';
   if (pct >= 50) return '⚡ MOYEN';
   return '⚠️ FAIBLE';
 }
 
-function analyzeWinner(homeStats, awayStats, odds) {
-  if (!homeStats || !awayStats) return null;
+function formatTime(dateStr) {
+  return new Date(dateStr).toLocaleTimeString('fr-FR', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris'
+  });
+}
 
-  const homeWinRate = homeStats.fixtures?.wins?.home?.total / Math.max(homeStats.fixtures?.played?.home?.total, 1);
-  const awayWinRate = awayStats.fixtures?.wins?.away?.total / Math.max(awayStats.fixtures?.played?.away?.total, 1);
-  const homeGoalsFor = homeStats.goals?.for?.average?.home || 0;
-  const awayGoalsFor = awayStats.goals?.for?.average?.away || 0;
-  const homeGoalsAgainst = homeStats.goals?.against?.average?.home || 0;
-  const awayGoalsAgainst = awayStats.goals?.against?.average?.away || 0;
+// ─── MESSAGE LIMITE ATTEINTE ─────────────────────────────────
 
-  // Score composite
-  const homeScore = (homeWinRate * 50) + (parseFloat(homeGoalsFor) * 10) - (parseFloat(homeGoalsAgainst) * 5);
-  const awayScore = (awayWinRate * 50) + (parseFloat(awayGoalsFor) * 10) - (parseFloat(awayGoalsAgainst) * 5);
+function sendLimitMessage(chatId, msgId, category) {
+  const emojis = { safe: '👑', fun: '👽', combine: '🚨', buteur: '🎯' };
+  const names = { safe: 'SAFE', fun: 'FUN', combine: 'COMBINÉ', buteur: 'BUTEUR' };
 
-  let winner, confidence;
-  const diff = Math.abs(homeScore - awayScore);
-  confidence = Math.min(90, 50 + diff * 2);
-
-  if (homeScore > awayScore + 5) {
-    winner = 'home';
-  } else if (awayScore > homeScore + 5) {
-    winner = 'away';
-  } else {
-    winner = 'draw';
-    confidence = Math.max(45, confidence - 15);
-  }
-
-  return { winner, confidence: Math.round(confidence) };
+  bot.editMessageText(
+    `${emojis[category]} *Prédiction ${names[category]} déjà utilisée aujourd'hui !*\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `🔒 Tu as déjà consulté ta prédiction ${names[category]} du jour.\n\n` +
+    `💎 *Tu veux des prédictions illimitées et exclusives ?*\n\n` +
+    `👉 Rejoins notre communauté premium sur Instagram :\n` +
+    `[LA\_PREDICTION777](https://www.instagram.com/la_prediction777?igsh=MXJyNW82ajU3NDM4Yw%3D%3D&utm_source=qr)\n\n` +
+    `⏰ *Tes prédictions se réinitialisent à minuit !* 🔄`,
+    {
+      chat_id: chatId,
+      message_id: msgId,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: false,
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Retour au menu', callback_data: 'menu' }]]
+      }
+    }
+  );
 }
 
 // ─── MENUS ───────────────────────────────────────────────────
+
 const mainMenu = {
   reply_markup: {
     inline_keyboard: [
@@ -121,36 +215,38 @@ const mainMenu = {
   }
 };
 
-function backMenu() {
-  return {
-    reply_markup: {
-      inline_keyboard: [[{ text: '🔙 Retour au menu', callback_data: 'menu' }]]
-    }
-  };
-}
+const backMenu = {
+  reply_markup: {
+    inline_keyboard: [[{ text: '🔙 Retour au menu', callback_data: 'menu' }]]
+  }
+};
 
-// ─── COMMANDE START ──────────────────────────────────────────
+// ─── START ───────────────────────────────────────────────────
+
 bot.onText(/\/start/, (msg) => {
   const name = msg.from.first_name || 'Champion';
   bot.sendMessage(msg.chat.id,
     `🏆 *Bienvenue ${name} sur LA PREDICTION 777* 🏆\n\n` +
-    `🤖 Notre IA analyse les matchs en temps réel pour te donner les meilleures prédictions football du jour.\n\n` +
-    `📊 *Choisissez votre type de pari :*`,
+    `🤖 Notre IA analyse les matchs et les vraies cotes en temps réel.\n\n` +
+    `📊 *Choisis ton type de pari :*\n\n` +
+    `_⚠️ 1 prédiction gratuite par catégorie et par jour_`,
     { parse_mode: 'Markdown', ...mainMenu }
   );
 });
 
 // ─── CALLBACKS ───────────────────────────────────────────────
+
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const msgId = query.message.message_id;
+  const userId = query.from.id;
   const data = query.data;
 
   bot.answerCallbackQuery(query.id);
 
   if (data === 'menu') {
     bot.editMessageText(
-      `🏆 *LA PREDICTION 777* — Menu principal\n\n📊 *Choisissez votre type de pari :*`,
+      `🏆 *LA PREDICTION 777* — Menu principal\n\n📊 *Choisis ton type de pari :*\n\n_⚠️ 1 prédiction gratuite par catégorie et par jour_`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...mainMenu }
     );
     return;
@@ -159,219 +255,225 @@ bot.on('callback_query', async (query) => {
   if (data === 'contact') {
     bot.editMessageText(
       `📲 *Nous contacter*\n\n` +
-      `Pour toute question, collaboration ou abonnement premium, rejoins-nous sur Instagram :\n\n` +
+      `Pour toute question ou abonnement premium, rejoins-nous sur Instagram :\n\n` +
       `👉 [LA\_PREDICTION777](https://www.instagram.com/la_prediction777?igsh=MXJyNW82ajU3NDM4Yw%3D%3D&utm_source=qr)\n\n` +
-      `_Notre équipe te répond dans les plus brefs délais_ 🤝`,
-      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', disable_web_page_preview: false, ...backMenu() }
+      `_Notre équipe te répond rapidement_ 🤝`,
+      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', disable_web_page_preview: false, ...backMenu }
     );
     return;
   }
 
-  // Loading message
+  // ── Vérification limite quotidienne ──
+  const categories = ['safe', 'fun', 'combine', 'buteur'];
+  if (categories.includes(data)) {
+    if (hasUsedToday(userId, data)) {
+      sendLimitMessage(chatId, msgId, data);
+      return;
+    }
+  }
+
+  // Message de chargement
   bot.editMessageText(
-    `⏳ *Analyse IA en cours...*\n\n🔍 Scan des matchs du jour\n📊 Calcul des statistiques\n🧠 Modélisation prédictive\n\n_Patiente quelques secondes..._`,
+    `⏳ *Analyse IA en cours...*\n\n` +
+    `🔍 Récupération des matchs du jour\n` +
+    `📊 Analyse des statistiques d'équipes\n` +
+    `💰 Scan des vraies cotes bookmakers\n` +
+    `🧠 Modélisation prédictive...\n\n` +
+    `_Patiente quelques secondes..._`,
     { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown' }
   );
 
-  const fixtures = await getFixturesToday();
+  const [fixtures, oddsData] = await Promise.all([getFixturesToday(), getRealOdds()]);
 
   if (!fixtures || fixtures.length === 0) {
     bot.editMessageText(
-      `😔 *Aucun match disponible aujourd'hui*\n\nReviens demain pour de nouvelles prédictions ! 🔜`,
-      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() }
+      `😔 *Aucun match disponible aujourd'hui*\n\nReviens demain ! 🔜`,
+      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu }
     );
     return;
   }
 
-  if (data === 'safe') await handleSafe(chatId, msgId, fixtures);
-  else if (data === 'fun') await handleFun(chatId, msgId, fixtures);
-  else if (data === 'combine') await handleCombine(chatId, msgId, fixtures);
-  else if (data === 'buteur') await handleButeur(chatId, msgId, fixtures);
+  // Marque comme utilisé AVANT d'envoyer (évite double clic)
+  markAsUsed(userId, data);
+
+  if (data === 'safe') await handleSafe(chatId, msgId, fixtures, oddsData);
+  else if (data === 'fun') await handleFun(chatId, msgId, fixtures, oddsData);
+  else if (data === 'combine') await handleCombine(chatId, msgId, fixtures, oddsData);
+  else if (data === 'buteur') await handleButeur(chatId, msgId, fixtures, oddsData);
 });
 
-// ─── SAFE 👑 (cote 1.30–1.90) ────────────────────────────────
-async function handleSafe(chatId, msgId, fixtures) {
+// ─── 👑 SAFE ─────────────────────────────────────────────────
+
+async function handleSafe(chatId, msgId, fixtures, oddsData) {
   let bestPick = null;
   let bestConf = 0;
 
-  for (const fix of fixtures.slice(0, 20)) {
-    const { fixture, teams, league } = fix;
-    const season = league.season;
+  for (const fix of fixtures.slice(0, 25)) {
+    const { teams, league } = fix;
+    const realOdds = findOddsForMatch(oddsData, teams.home.name, teams.away.name);
+    if (!realOdds) continue;
 
-    const [homeStats, awayStats, oddsData] = await Promise.all([
-      getTeamStats(teams.home.id, league.id, season),
-      getTeamStats(teams.away.id, league.id, season),
-      getOdds(fixture.id)
+    const [homeStats, awayStats] = await Promise.all([
+      getTeamStats(teams.home.id, league.id, league.season),
+      getTeamStats(teams.away.id, league.id, league.season)
     ]);
 
-    const analysis = analyzeWinner(homeStats, awayStats, oddsData);
-    if (!analysis) continue;
-
-    const mw = oddsData?.matchWinner?.values;
-    if (!mw) continue;
-
+    const analysis = analyzeMatch(homeStats, awayStats);
     let targetOdd, label;
-    if (analysis.winner === 'home') {
-      const val = mw.find(v => v.value === 'Home');
-      if (!val) continue;
-      const odd = parseFloat(val.odd);
-      if (odd < 1.30 || odd > 1.90) continue;
-      targetOdd = odd;
-      label = `🏠 Victoire ${teams.home.name}`;
-    } else if (analysis.winner === 'away') {
-      const val = mw.find(v => v.value === 'Away');
-      if (!val) continue;
-      const odd = parseFloat(val.odd);
-      if (odd < 1.30 || odd > 1.90) continue;
-      targetOdd = odd;
-      label = `✈️ Victoire ${teams.away.name}`;
+
+    if (analysis.winner === 'home' && realOdds.home >= 1.30 && realOdds.home <= 1.90) {
+      targetOdd = realOdds.home; label = `🏠 Victoire ${teams.home.name}`;
+    } else if (analysis.winner === 'away' && realOdds.away >= 1.30 && realOdds.away <= 1.90) {
+      targetOdd = realOdds.away; label = `✈️ Victoire ${teams.away.name}`;
+    } else if (analysis.winner === 'draw' && realOdds.draw >= 1.30 && realOdds.draw <= 1.90) {
+      targetOdd = realOdds.draw; label = `🤝 Match Nul`;
     } else continue;
 
     if (analysis.confidence > bestConf) {
       bestConf = analysis.confidence;
-      bestPick = { fix, label, odd: targetOdd, conf: analysis.confidence, league };
+      bestPick = { fix, label, odd: targetOdd, conf: analysis.confidence, league, realOdds };
     }
   }
 
   if (!bestPick) {
-    bot.editMessageText(
-      `😔 *Aucun pari SAFE trouvé aujourd'hui*\n\nLes cotes disponibles ne correspondent pas aux critères de sécurité. Reviens demain ! 🔜`,
-      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() }
-    );
-    return;
-  }
-
-  const { fix, label, odd, conf, league } = bestPick;
-  const time = new Date(fix.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-
-  const msg =
-    `👑 *PARI SAFE DU JOUR*\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `🏆 *${league.name}* — ${league.country}\n` +
-    `⏰ ${time} (heure de Paris)\n\n` +
-    `⚽ *${fix.teams.home.name}* vs *${fix.teams.away.name}*\n\n` +
-    `🎯 *Prédiction :* ${label}\n` +
-    `💰 *Cote :* \`${odd.toFixed(2)}\`\n\n` +
-    `📊 *Niveau de confiance :*\n` +
-    `${confidenceBar(conf)}\n` +
-    `${getConfidenceLevel(conf)}\n\n` +
-    `🧠 *Analyse IA :* Basée sur le taux de victoires domicile/extérieur, la moyenne de buts et la forme récente des équipes.\n\n` +
-    `⚠️ _Le pari responsable avant tout. Ne misez que ce que vous pouvez vous permettre de perdre._`;
-
-  bot.editMessageText(msg, { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() });
-}
-
-// ─── FUN 👽 (cote 2.50–8.00) ─────────────────────────────────
-async function handleFun(chatId, msgId, fixtures) {
-  let bestPick = null;
-  let bestScore = 0;
-
-  for (const fix of fixtures.slice(0, 25)) {
-    const { fixture, teams, league } = fix;
-    const season = league.season;
-
-    const [homeStats, awayStats, oddsData] = await Promise.all([
-      getTeamStats(teams.home.id, league.id, season),
-      getTeamStats(teams.away.id, league.id, season),
-      getOdds(fixture.id)
-    ]);
-
-    const mw = oddsData?.matchWinner?.values;
-    if (!mw) continue;
-
-    // Cherche la cote la plus value dans la range
-    for (const outcome of ['Home', 'Draw', 'Away']) {
-      const val = mw.find(v => v.value === outcome);
-      if (!val) continue;
-      const odd = parseFloat(val.odd);
-      if (odd < 2.50 || odd > 8.00) continue;
-
-      // Score value = potentiel gain * probabilité estimée
-      let estProb;
-      if (outcome === 'Draw') estProb = 0.28;
-      else if (outcome === 'Home') estProb = 0.45;
-      else estProb = 0.30;
-
-      const valueScore = odd * estProb;
-
-      if (valueScore > bestScore) {
-        bestScore = valueScore;
-        const label = outcome === 'Home' ? `🏠 Victoire ${teams.home.name}` :
-          outcome === 'Away' ? `✈️ Victoire ${teams.away.name}` : `🤝 Match Nul`;
-        const conf = Math.round(Math.min(75, estProb * 200));
-        bestPick = { fix, label, odd, conf, league };
+    for (const fix of fixtures.slice(0, 15)) {
+      const { teams } = fix;
+      const realOdds = findOddsForMatch(oddsData, teams.home.name, teams.away.name);
+      if (!realOdds) continue;
+      const allOdds = [
+        { odd: realOdds.home, label: `🏠 Victoire ${teams.home.name}` },
+        { odd: realOdds.away, label: `✈️ Victoire ${teams.away.name}` },
+        { odd: realOdds.draw, label: `🤝 Match Nul` }
+      ].filter(o => o.odd && o.odd >= 1.25 && o.odd <= 2.00);
+      if (allOdds.length > 0) {
+        const pick = allOdds.sort((a, b) => a.odd - b.odd)[0];
+        bestPick = { fix, label: pick.label, odd: pick.odd, conf: 58, league: fix.league, realOdds };
+        break;
       }
     }
   }
 
   if (!bestPick) {
     bot.editMessageText(
-      `😔 *Aucun pari FUN trouvé aujourd'hui*\n\nReviens demain ! 🔜`,
-      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() }
+      `😔 *Aucun pari SAFE disponible aujourd'hui*\n\nReviens demain ! 🔜`,
+      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu }
     );
     return;
   }
 
-  const { fix, label, odd, conf, league } = bestPick;
-  const time = new Date(fix.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-
-  const msg =
-    `👽 *PARI FUN DU JOUR*\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+  const { fix, label, odd, conf, league, realOdds } = bestPick;
+  bot.editMessageText(
+    `👑 *PARI SAFE DU JOUR*\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
     `🏆 *${league.name}* — ${league.country}\n` +
-    `⏰ ${time} (heure de Paris)\n\n` +
-    `⚽ *${fix.teams.home.name}* vs *${fix.teams.away.name}*\n\n` +
+    `⏰ *${formatTime(fix.fixture.date)}* (heure de Paris)\n\n` +
+    `⚽ *${fix.teams.home.name}*\n       vs\n⚽ *${fix.teams.away.name}*\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
     `🎯 *Prédiction :* ${label}\n` +
-    `💰 *Cote :* \`${odd.toFixed(2)}\`\n\n` +
-    `📊 *Niveau de confiance :*\n` +
-    `${confidenceBar(conf)}\n` +
-    `${getConfidenceLevel(conf)}\n\n` +
-    `🧠 *Analyse IA :* Détection de valeur sur cotes sous-estimées par les bookmakers basée sur les statistiques historiques.\n\n` +
-    `🔥 *Gain potentiel pour 10€ misés :* ${(10 * odd).toFixed(2)}€\n\n` +
-    `⚠️ _Pari à risque modéré. Ne misez que ce que vous pouvez vous permettre de perdre._`;
-
-  bot.editMessageText(msg, { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() });
+    `💰 *Cote réelle :* \`${odd.toFixed(2)}\` _(${realOdds.bookmaker})_\n\n` +
+    `📊 *Niveau de confiance IA :*\n${confidenceBar(conf)}\n${confidenceLabel(conf)}\n\n` +
+    `🧠 *Analyse :* L'IA a croisé le taux de victoires, la forme des 5 derniers matchs, la moyenne de buts et les vraies cotes bookmakers.\n\n` +
+    `💵 *Gain pour 10€ misés :* ${(10 * odd).toFixed(2)}€\n\n` +
+    `⚠️ _Pariez de manière responsable._`,
+    { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu }
+  );
 }
 
-// ─── COMBINÉ 🚨 (3 matchs, cote totale affichée) ─────────────
-async function handleCombine(chatId, msgId, fixtures) {
+// ─── 👽 FUN ──────────────────────────────────────────────────
+
+async function handleFun(chatId, msgId, fixtures, oddsData) {
+  let bestPick = null;
+  let bestValue = 0;
+
+  for (const fix of fixtures.slice(0, 25)) {
+    const { teams, league } = fix;
+    const realOdds = findOddsForMatch(oddsData, teams.home.name, teams.away.name);
+    if (!realOdds) continue;
+
+    const [homeStats, awayStats] = await Promise.all([
+      getTeamStats(teams.home.id, league.id, league.season),
+      getTeamStats(teams.away.id, league.id, league.season)
+    ]);
+
+    const analysis = analyzeMatch(homeStats, awayStats);
+    const candidates = [
+      { odd: realOdds.home, label: `🏠 Victoire ${teams.home.name}`, type: 'home' },
+      { odd: realOdds.away, label: `✈️ Victoire ${teams.away.name}`, type: 'away' },
+      { odd: realOdds.draw, label: `🤝 Match Nul`, type: 'draw' }
+    ].filter(c => c.odd && c.odd >= 2.50 && c.odd <= 8.00);
+
+    for (const c of candidates) {
+      const isAligned = (c.type === analysis.winner);
+      const valueScore = isAligned ? (c.odd * (analysis.confidence / 100)) : (c.odd * 0.25);
+      if (valueScore > bestValue) {
+        bestValue = valueScore;
+        const conf = isAligned ? analysis.confidence : Math.round(analysis.confidence * 0.6);
+        bestPick = { fix, label: c.label, odd: c.odd, conf, league, realOdds };
+      }
+    }
+  }
+
+  if (!bestPick) {
+    bot.editMessageText(
+      `😔 *Aucun pari FUN disponible aujourd'hui*\n\nReviens demain ! 🔜`,
+      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu }
+    );
+    return;
+  }
+
+  const { fix, label, odd, conf, league, realOdds } = bestPick;
+  bot.editMessageText(
+    `👽 *PARI FUN DU JOUR*\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `🏆 *${league.name}* — ${league.country}\n` +
+    `⏰ *${formatTime(fix.fixture.date)}* (heure de Paris)\n\n` +
+    `⚽ *${fix.teams.home.name}*\n       vs\n⚽ *${fix.teams.away.name}*\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `🎯 *Prédiction :* ${label}\n` +
+    `💰 *Cote réelle :* \`${odd.toFixed(2)}\` _(${realOdds.bookmaker})_\n\n` +
+    `📊 *Niveau de confiance IA :*\n${confidenceBar(conf)}\n${confidenceLabel(conf)}\n\n` +
+    `🧠 *Analyse :* L'IA a détecté une valeur sur cette cote. Les bookmakers sous-estiment la probabilité de ce résultat selon nos modèles statistiques.\n\n` +
+    `💵 *Gain pour 10€ :* ${(10 * odd).toFixed(2)}€\n` +
+    `💵 *Gain pour 20€ :* ${(20 * odd).toFixed(2)}€\n\n` +
+    `⚠️ _Pariez de manière responsable._`,
+    { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu }
+  );
+}
+
+// ─── 🚨 COMBINÉ ───────────────────────────────────────────────
+
+async function handleCombine(chatId, msgId, fixtures, oddsData) {
   const picks = [];
 
   for (const fix of fixtures.slice(0, 30)) {
     if (picks.length >= 3) break;
-    const { fixture, teams, league } = fix;
-    const season = league.season;
+    const { teams, league } = fix;
+    const realOdds = findOddsForMatch(oddsData, teams.home.name, teams.away.name);
+    if (!realOdds) continue;
 
-    const [homeStats, awayStats, oddsData] = await Promise.all([
-      getTeamStats(teams.home.id, league.id, season),
-      getTeamStats(teams.away.id, league.id, season),
-      getOdds(fixture.id)
+    const [homeStats, awayStats] = await Promise.all([
+      getTeamStats(teams.home.id, league.id, league.season),
+      getTeamStats(teams.away.id, league.id, league.season)
     ]);
 
-    const analysis = analyzeWinner(homeStats, awayStats, oddsData);
-    if (!analysis) continue;
+    const analysis = analyzeMatch(homeStats, awayStats);
+    if (analysis.confidence < 55) continue;
 
-    const mw = oddsData?.matchWinner?.values;
-    if (!mw) continue;
+    let targetOdd, label;
+    if (analysis.winner === 'home' && realOdds.home >= 1.30 && realOdds.home <= 3.00) {
+      targetOdd = realOdds.home; label = `🏠 ${teams.home.name}`;
+    } else if (analysis.winner === 'away' && realOdds.away >= 1.30 && realOdds.away <= 3.00) {
+      targetOdd = realOdds.away; label = `✈️ ${teams.away.name}`;
+    } else continue;
 
-    let outcome = analysis.winner === 'home' ? 'Home' : analysis.winner === 'away' ? 'Away' : 'Draw';
-    const val = mw.find(v => v.value === outcome);
-    if (!val) continue;
-
-    const odd = parseFloat(val.odd);
-    if (odd < 1.30 || odd > 3.00) continue;
-    if (analysis.confidence < 50) continue;
-
-    const label = outcome === 'Home' ? `🏠 ${teams.home.name}` :
-      outcome === 'Away' ? `✈️ ${teams.away.name}` : `🤝 Nul`;
-
-    picks.push({ fix, label, odd, conf: analysis.confidence, league });
+    if (picks.find(p => p.league.id === league.id)) continue;
+    picks.push({ fix, label, odd: targetOdd, conf: analysis.confidence, league, realOdds });
   }
 
   if (picks.length < 2) {
     bot.editMessageText(
-      `😔 *Combiné impossible aujourd'hui*\n\nPas assez de matchs avec les critères requis. Reviens demain ! 🔜`,
-      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() }
+      `😔 *Combiné impossible aujourd'hui*\n\nPas assez de matchs valides. Reviens demain ! 🔜`,
+      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu }
     );
     return;
   }
@@ -379,39 +481,43 @@ async function handleCombine(chatId, msgId, fixtures) {
   const totalOdd = picks.reduce((acc, p) => acc * p.odd, 1);
   const avgConf = Math.round(picks.reduce((acc, p) => acc + p.conf, 0) / picks.length);
 
-  let lines = `🚨 *COMBINÉ DU JOUR (${picks.length} matchs)*\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+  let lines =
+    `🚨 *COMBINÉ DU JOUR — ${picks.length} MATCHS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
   picks.forEach((p, i) => {
-    const time = new Date(p.fix.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-    lines += `*${i + 1}.* ⚽ ${p.fix.teams.home.name} vs ${p.fix.teams.away.name}\n`;
-    lines += `   ⏰ ${time} | 🏆 ${p.league.name}\n`;
-    lines += `   🎯 ${p.label} @ \`${p.odd.toFixed(2)}\`\n`;
-    lines += `   📊 Confiance : ${p.conf}%\n\n`;
+    lines += `*${i + 1}.* 🏆 ${p.league.name}\n`;
+    lines += `    ⏰ ${formatTime(p.fix.fixture.date)} | _(${p.realOdds.bookmaker})_\n`;
+    lines += `    ⚽ ${p.fix.teams.home.name} vs ${p.fix.teams.away.name}\n`;
+    lines += `    🎯 ${p.label} @ \`${p.odd.toFixed(2)}\`\n`;
+    lines += `    📊 Confiance : *${p.conf}%*\n\n`;
   });
 
-  lines += `━━━━━━━━━━━━━━━━━━━━\n`;
-  lines += `💰 *Cote totale combinée :* \`${totalOdd.toFixed(2)}\`\n`;
-  lines += `🔥 *Gain pour 10€ misés :* ${(10 * totalOdd).toFixed(2)}€\n\n`;
-  lines += `📊 *Confiance globale :*\n${confidenceBar(avgConf)}\n${getConfidenceLevel(avgConf)}\n\n`;
-  lines += `🧠 *Analyse IA :* Chaque sélection est validée indépendamment. Seuls les matchs avec une convergence statistique forte sont retenus.\n\n`;
-  lines += `⚠️ _Le pari responsable avant tout._`;
+  lines +=
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *Cote totale :* \`${totalOdd.toFixed(2)}\`\n` +
+    `💵 *Gain pour 10€ :* ${(10 * totalOdd).toFixed(2)}€\n` +
+    `💵 *Gain pour 20€ :* ${(20 * totalOdd).toFixed(2)}€\n\n` +
+    `📊 *Confiance globale IA :*\n${confidenceBar(avgConf)}\n${confidenceLabel(avgConf)}\n\n` +
+    `🧠 *Analyse :* Seuls les matchs avec une forte convergence statistique et des cotes cohérentes sont retenus.\n\n` +
+    `⚠️ _Pariez de manière responsable._`;
 
-  bot.editMessageText(lines, { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() });
+  bot.editMessageText(lines, { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu });
 }
 
-// ─── BUTEUR 🎯 ────────────────────────────────────────────────
-async function handleButeur(chatId, msgId, fixtures) {
+// ─── 🎯 BUTEUR ────────────────────────────────────────────────
+
+async function handleButeur(chatId, msgId, fixtures, oddsData) {
   let bestPick = null;
   let bestConf = 0;
 
   for (const fix of fixtures.slice(0, 15)) {
-    const { fixture, teams, league } = fix;
-    const season = league.season;
-
-    const topScorers = await getTopScorers(league.id, season);
+    const { teams, league } = fix;
+    const topScorers = await getTopScorers(league.id, league.season);
     if (!topScorers.length) continue;
 
-    // Cherche un buteur dans l'un des deux clubs
+    const realOdds = findOddsForMatch(oddsData, teams.home.name, teams.away.name);
+
     for (const scorer of topScorers) {
       const teamId = scorer.statistics?.[0]?.team?.id;
       if (teamId !== teams.home.id && teamId !== teams.away.id) continue;
@@ -419,83 +525,64 @@ async function handleButeur(chatId, msgId, fixtures) {
       const goals = scorer.statistics?.[0]?.goals?.total || 0;
       const played = scorer.statistics?.[0]?.games?.appearences || 1;
       const goalsPerGame = goals / played;
+      if (goalsPerGame < 0.3) continue;
 
-      const conf = Math.min(88, Math.round(goalsPerGame * 70 + 30));
-      if (conf < 45 || conf <= bestConf) continue;
+      const conf = Math.min(85, Math.round(goalsPerGame * 65 + 35));
+      if (conf <= bestConf) continue;
 
-      const oddsData = await getOdds(fixture.id);
-      const scorerBet = oddsData?.scorer?.values;
-      let odd = null;
-
-      if (scorerBet) {
-        const playerName = `${scorer.player.firstname} ${scorer.player.lastname}`;
-        const match = scorerBet.find(v => v.value?.toLowerCase().includes(scorer.player.lastname?.toLowerCase()));
-        odd = match ? parseFloat(match.odd) : null;
-      }
-
-      if (!odd) odd = parseFloat((1 / goalsPerGame * 0.85).toFixed(2));
-      if (odd < 1.50) odd = 1.50;
-      if (odd > 8) continue;
+      const estimatedOdd = parseFloat(Math.max(1.80, (1 / goalsPerGame) * 0.80).toFixed(2));
+      const teamName = teamId === teams.home.id ? teams.home.name : teams.away.name;
+      const isHome = teamId === teams.home.id;
 
       bestConf = conf;
-      const teamName = teamId === teams.home.id ? teams.home.name : teams.away.name;
-      const time = new Date(fix.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-
       bestPick = {
         player: scorer.player,
-        teamName,
-        goals,
-        played,
+        teamName, goals, played,
         goalsPerGame: goalsPerGame.toFixed(2),
-        odd: odd.toFixed(2),
-        conf,
+        odd: estimatedOdd, conf,
         matchStr: `${teams.home.name} vs ${teams.away.name}`,
-        time,
-        league
+        time: formatTime(fix.fixture.date),
+        league,
+        teamOdd: isHome ? realOdds?.home : realOdds?.away,
+        bookmaker: realOdds?.bookmaker || 'Estimation IA'
       };
-      break;
     }
   }
 
   if (!bestPick) {
     bot.editMessageText(
       `😔 *Aucun buteur trouvé aujourd'hui*\n\nReviens demain ! 🔜`,
-      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() }
+      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu }
     );
     return;
   }
 
   const p = bestPick;
-  const msg =
-    `🎯 *BUTEUR DU JOUR*\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `🏆 *${p.league.name}*\n` +
-    `⏰ ${p.time} (heure de Paris)\n` +
-    `⚽ *${p.matchStr}*\n\n` +
-    `👤 *Buteur sélectionné :*\n` +
-    `${p.player.firstname} *${p.player.lastname.toUpperCase()}*\n` +
-    `🏃 Équipe : ${p.teamName}\n\n` +
-    `📈 *Statistiques :*\n` +
-    `• Buts cette saison : *${p.goals}*\n` +
-    `• Matchs joués : *${p.played}*\n` +
-    `• Moyenne : *${p.goalsPerGame} but/match*\n\n` +
-    `💰 *Cote estimée :* \`${p.odd}\`\n` +
-    `🔥 *Gain pour 10€ :* ${(10 * parseFloat(p.odd)).toFixed(2)}€\n\n` +
-    `📊 *Niveau de confiance :*\n` +
-    `${confidenceBar(p.conf)}\n` +
-    `${getConfidenceLevel(p.conf)}\n\n` +
-    `🧠 *Analyse IA :* Sélection basée sur la forme offensive, le nombre de buts en cours de saison et l'opposition défensive adverse.\n\n` +
-    `⚠️ _Le pari responsable avant tout._`;
+  const lastName = p.player.lastname?.toUpperCase() || p.player.name?.toUpperCase();
+  const firstName = p.player.firstname || '';
 
-  bot.editMessageText(msg, { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu() });
+  bot.editMessageText(
+    `🎯 *BUTEUR DU JOUR*\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `🏆 *${p.league.name}*\n` +
+    `⏰ *${p.time}* (heure de Paris)\n` +
+    `⚽ *${p.matchStr}*\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *Buteur sélectionné :*\n` +
+    `   ${firstName} *${lastName}*\n` +
+    `   🏃 Équipe : *${p.teamName}*\n\n` +
+    `📈 *Statistiques saison :*\n` +
+    `   ⚽ Buts : *${p.goals}*\n` +
+    `   🎮 Matchs : *${p.played}*\n` +
+    `   📊 Moyenne : *${p.goalsPerGame} but/match*\n\n` +
+    `💰 *Cote buteur estimée :* \`${p.odd.toFixed(2)}\`\n` +
+    (p.teamOdd ? `💰 *Cote victoire ${p.teamName} :* \`${p.teamOdd.toFixed(2)}\` _(${p.bookmaker})_\n` : '') +
+    `\n📊 *Niveau de confiance IA :*\n${confidenceBar(p.conf)}\n${confidenceLabel(p.conf)}\n\n` +
+    `🧠 *Analyse :* Sélectionné sur sa régularité offensive, son temps de jeu et l'opposition défensive adverse.\n\n` +
+    `💵 *Gain pour 10€ misés :* ${(10 * p.odd).toFixed(2)}€\n\n` +
+    `⚠️ _Pariez de manière responsable._`,
+    { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', ...backMenu }
+  );
 }
 
-// ─── CRON : envoi automatique chaque matin à 9h ──────────────
-cron.schedule('0 9 * * *', async () => {
-  console.log('📅 Envoi automatique des prédictions du jour...');
-  // Tu peux ajouter ici un channel_id pour diffuser automatiquement
-}, { timezone: 'Europe/Paris' });
-
-// ─── HEALTH CHECK ─────────────────────────────────────────────
-console.log('🤖 LA PREDICTION 777 Bot démarré ✅');
-
+console.log('🤖 LA PREDICTION 777 — Bot démarré ✅');
